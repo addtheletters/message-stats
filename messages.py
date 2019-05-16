@@ -2,14 +2,112 @@
 
 # perform some analysis on a downloaded Facebook Messenger chat history json
 import json, unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from enum import Enum
 
 SPECIAL_REACT_KEYS = ["total", "messages"]
 
-def loadfile(filename):
+class TimePeriod(Enum):
+    ALL = 0
+    YEAR = 1
+    MONTH = 2
+    WEEK = 3
+    DAY = 4
+
+def loadjson(filename):
     with open(filename, 'r') as file:
         return json.load(file)
     return None
+
+class TimeRangeCount:
+    def __init__(self, timerange=None):
+        self.timerange = timerange
+        self.allcount = createcount()
+        self.percount = defaultdict(createcount)
+        if timerange != None:
+            if len(timerange) != 2:
+                print("! time range invalid (start, end)")
+            elif self.timerange[0] > self.timerange[1]:
+                print("! time range invalid (start > end)")
+
+    def rangestr(self):
+        if self.timerange is None:
+            return "all time"
+        return "{} - {}".format(self.timerange[0], self.timerange[1])
+
+    def inrange(self, dt):
+        if self.timerange is None:
+            return True
+        return dt >= self.timerange[0] and dt < self.timerange[1]
+
+    def message(self, msg):
+        if self.timerange != None and "timestamp_ms" in msg:
+            msg_dt = datetime.fromtimestamp(msg["timestamp_ms"]/1000.0)
+            if not self.inrange(msg_dt):
+                print("message not in time range ({} to {})".format(self.timerange[0], self.timerange[1]))
+                return
+
+        countmessage(msg, self.allcount)
+
+        # count for the sender
+        if "sender_name" in msg:
+            name = msg["sender_name"]
+            if name not in self.percount:
+                self.percount[name] = createcount()
+            countmessage(msg, self.percount[name])
+
+        # tally reactions
+        countreacts(msg, self.allcount, self.percount)
+
+class TimeDivider:
+    ALL_KEY = 0
+
+    def __init__(self, period=TimePeriod.ALL):
+        self.trcounts = {}
+        self.period = period
+        if self.period not in TimePeriod:
+            print("! invalid period")
+        self.trcounts[TimeDivider.ALL_KEY] = TimeRangeCount()
+
+    def message(self, msg):
+        self.trcounts[TimeDivider.ALL_KEY].message(msg)
+
+        if self.period != TimePeriod.ALL:
+            msg_dt = None if "timestamp_ms" not in msg else datetime.fromtimestamp(msg["timestamp_ms"]/1000.0)
+            timekey = self.getkey(msg_dt)
+
+            if timekey not in self.trcounts:
+                self.trcounts[timekey] = self.createtrcount(timekey)
+            self.trcounts[timekey].message(msg)
+
+    def getkey(self, dt):
+        if self.period is TimePeriod.ALL:
+            return TimeDivider.ALL_KEY
+        elif self.period is TimePeriod.YEAR:
+            return datetime(year=dt.year, month=1, day=1)
+        elif self.period is TimePeriod.MONTH:
+            return datetime(year=dt.year, month=dt.month, day=1)
+        elif self.period is TimePeriod.WEEK:
+            return dt - timedelta(days=dt.weekday()) # key using first day of week
+        elif self.period is TimePeriod.DAY:
+            return datetime(year=dt.year, month=dt.month, day=dt.day)
+        return None
+
+    def createtrcount(self, key):
+        if self.period is TimePeriod.ALL:
+            return TimeRangeCount()
+        elif self.period is TimePeriod.YEAR:
+            return TimeRangeCount((key, datetime(year=key.year+1, month=1, day=1)))
+        elif self.period is TimePeriod.MONTH:
+            if key.month == 12:
+                return TimeRangeCount((key, datetime(year=key.year+1, month=1, day=1)))
+            return TimeRangeCount((key, datetime(year=key.year, month=key.month+1, day=1)))
+        elif self.period is TimePeriod.WEEK:
+            return TimeRangeCount((key, key + timedelta(days=7)))
+        elif self.period is TimePeriod.DAY:
+            return TimeRangeCount((key, key + timedelta(days=1)))
+        return None
 
 def createcount():
     ctr = {
@@ -97,19 +195,19 @@ def ratiostr(a, b):
 
 def printcount(ctr):
     print("stickers: " + ratiostr(ctr["sticker"], ctr["msg"]))
-    printstickers(ctr)
+    printstickers(ctr, 2)
     print("photos: " + ratiostr(ctr["photos"], ctr["msg"]))
     print("links: " + ratiostr(ctr["share"], ctr["msg"]))
     print()
     return
 
-def printreacts(ctr, total_msgs=None, most_common=3):
+def printreacts(ctr, total_msgs=None, most_common=2):
     print("reacts: ")
     print("received on: " + ratiostr(ctr["reacts_received"]["messages"], ctr["msg"]))
     print("received total: {} ({} / message)".format(ctr["reacts_received"]["total"], round(ctr["reacts_received"]["total"] / ctr["msg"], 3)))
 
     # try to show the most_common most common reacts, skipping the "total" and "message" counters
-    common_received = ctr["reacts_received"].most_common()[:most_common+2]
+    common_received = ctr["reacts_received"].most_common()[:most_common+len(SPECIAL_REACT_KEYS)]
     print("\t{} most common received reacts:".format(most_common))
 
     i, displayed = 0, 0
@@ -124,7 +222,7 @@ def printreacts(ctr, total_msgs=None, most_common=3):
     if total_msgs:
         print("given: " + ratiostr(ctr["reacts_given"]["total"], total_msgs))
 
-        common_given = ctr["reacts_given"].most_common()[:most_common+2]
+        common_given = ctr["reacts_given"].most_common()[:most_common+len(SPECIAL_REACT_KEYS)]
         i, displayed = 0, 0
         print("\t{} most common given reacts:".format(most_common))
         while i < len(common_given) and displayed < most_common:
@@ -146,46 +244,42 @@ def printstickers(ctr, most_common=3):
         print("\t\t{}: {}".format(sticker[1], sticker[0]))
     return
 
-def analyze(chat):
+def analyze(chat, period=TimePeriod.ALL):
     if "messages" not in chat:
         print("no messages")
         return
  
     messages = chat["messages"]
 
-    count = createcount()
-    p_count = {}
-    for person in chat["participants"]:
-        p_count[person["name"]] = createcount()
-
+    td = TimeDivider(period=period)
+    #dtcount = TimeRangeCount()
     for msg in messages:
-        # count all messages
-        countmessage(msg, count)
+        #dtcount.message(msg)
+        td.message(msg)
+   
+    return td
 
-        # count for the sender
-        if "sender_name" in msg:
-            name = msg["sender_name"]
-            if name not in p_count:
-                p_count[name] = createcount()
-            countmessage(msg, p_count[name])
+def printanalysis(td):
+    for timekey, trcount in td.trcounts.items():
+        print("\n=========== chat stats for " + trcount.rangestr())
+        for name, pstats in trcount.percount.items():
+            print("---\nfor {}:".format(name))
+            print("messages: {} / {} = {} %".format(pstats["msg"], trcount.allcount["msg"], round(pstats["msg"] / trcount.allcount["msg"] * 100, 3)))
+            printcount(pstats)
+            printreacts(pstats, trcount.allcount["msg"])
 
-        # tally reactions
-        countreacts(msg, count, p_count)
+        print("---\ntime period totals:")
+        print("messages sent: " + str(trcount.allcount["msg"]))
+        printcount(trcount.allcount)
+        printreacts(trcount.allcount)
+        print("============ end stats for " + trcount.rangestr())
+    return
 
-    for person in p_count:
-        print("===========\nstats for {}:".format(person))
-        print("messages: {} / {} = {} %".format(p_count[person]["msg"], count["msg"], round(p_count[person]["msg"] / count["msg"] * 100, 3)))
-        printcount(p_count[person])
-        printreacts(p_count[person], count["msg"])
+def main():
+    bjork = loadjson("bjork_message.json")
+    td = analyze(bjork, TimePeriod.YEAR)
+    printanalysis(td)
+    return
 
-    print("==========\nOVERALL TOTALS:")
-    print("messages sent: " + str(count["msg"]))
-    printcount(count)
-    printreacts(count)
-
-    return (count, p_count)
-
-# def test():
-#     bjork = loadfile("bjork_message.json")
-#     return analyze(bjork)
-# test()
+if __name__ == '__main__':
+    main()
