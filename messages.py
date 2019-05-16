@@ -20,6 +20,24 @@ def loadjson(filename):
         return json.load(file)
     return None
 
+def createcount():
+    ctr = {
+            "msg" : 0,
+            "sticker" : 0,
+            "photos" : 0,
+            "share" : 0,
+        }
+
+    # "total" : counts up for each react (can be multiple per message)
+    # "messages" : counts up only once for each message that gets at least one react
+    ctr["reacts_received"] = Counter(total=0, messages=0)
+    ctr["reacts_given"] = Counter(total=0)
+
+    ctr["sticker_use"] = Counter()
+    ctr["photo_use"] = Counter()
+
+    return ctr
+
 class TimeRangeCount:
     def __init__(self, timerange=None):
         self.timerange = timerange
@@ -48,14 +66,16 @@ class TimeRangeCount:
                 print("message not in time range ({} to {})".format(self.timerange[0], self.timerange[1]))
                 return
 
-        countmessage(msg, self.allcount)
-
         # count for the sender
         if "sender_name" in msg:
             name = msg["sender_name"]
+
             if name not in self.percount:
                 self.percount[name] = createcount()
             countmessage(msg, self.percount[name])
+
+        # count for total
+        countmessage(msg, self.allcount)
 
         # tally reactions
         countreacts(msg, self.allcount, self.percount)
@@ -70,6 +90,9 @@ class TimeDivider:
             print("! invalid period")
         self.trcounts[TimeDivider.ALL_KEY] = TimeRangeCount()
 
+    def alltime(self):
+        return self.trcounts[TimeDivider.ALL_KEY]
+
     def message(self, msg):
         self.trcounts[TimeDivider.ALL_KEY].message(msg)
 
@@ -81,6 +104,7 @@ class TimeDivider:
                 self.trcounts[timekey] = self.createtrcount(timekey)
             self.trcounts[timekey].message(msg)
 
+    # a datetime representing the start of a time period to be counted for
     def getkey(self, dt):
         if self.period is TimePeriod.ALL:
             return TimeDivider.ALL_KEY
@@ -94,38 +118,24 @@ class TimeDivider:
             return datetime(year=dt.year, month=dt.month, day=dt.day)
         return None
 
-    def createtrcount(self, key):
+    # a datetime tuple with the start and end of a time period to be counted
+    def getrange(self, key):
         if self.period is TimePeriod.ALL:
-            return TimeRangeCount()
+            return None
         elif self.period is TimePeriod.YEAR:
-            return TimeRangeCount((key, datetime(year=key.year+1, month=1, day=1)))
+            return (key, datetime(year=key.year+1, month=1, day=1))
         elif self.period is TimePeriod.MONTH:
             if key.month == 12:
-                return TimeRangeCount((key, datetime(year=key.year+1, month=1, day=1)))
-            return TimeRangeCount((key, datetime(year=key.year, month=key.month+1, day=1)))
+                return (key, datetime(year=key.year+1, month=1, day=1))
+            return (key, datetime(year=key.year, month=key.month+1, day=1))
         elif self.period is TimePeriod.WEEK:
-            return TimeRangeCount((key, key + timedelta(days=7)))
+            return (key, key + timedelta(days=7))
         elif self.period is TimePeriod.DAY:
-            return TimeRangeCount((key, key + timedelta(days=1)))
+            return (key, key + timedelta(days=1))
         return None
 
-def createcount():
-    ctr = {
-            "msg" : 0,
-            "sticker" : 0,
-            "photos" : 0,
-            "share" : 0,
-        }
-
-    # "total" : counts up for each react (can be multiple per message)
-    # "messages" : counts up only once for each message that gets at least one react
-    ctr["reacts_received"] = Counter(total=0, messages=0)
-    ctr["reacts_given"] = Counter(total=0)
-
-    ctr["sticker_use"] = Counter()
-    ctr["photo_use"] = Counter()
-
-    return ctr
+    def createtrcount(self, key):
+        return TimeRangeCount(self.getrange(key))
 
 def countmessage(msg, ctr):
     if ctr is None:
@@ -153,6 +163,8 @@ def countmessage(msg, ctr):
             if "uri" in phobj:
                 photo = phobj["uri"]
             ctr["photo_use"][photo] += 1
+
+    # TODO track shared link domains
 
     return
 
