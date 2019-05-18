@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 SPECIAL_REACT_KEYS = ["total", "messages"]
+SPECIAL_TIMERANGE = "__timerange__"
+SPECIAL_TIMEDIVIDER = "__timedivider__"
 
 class TimePeriod(Enum):
     ALL = 0
@@ -16,9 +18,47 @@ class TimePeriod(Enum):
     DAY = 4
 
 def loadjson(filename):
+    def decoder(dct):
+        def counterify(dct):
+            dct["reacts_received"] = Counter(dct["reacts_received"])
+            dct["reacts_given"] = Counter(dct["reacts_given"])
+            dct["sticker_use"] = Counter(dct["sticker_use"])
+            dct["photo_use"] = Counter(dct["photo_use"])
+            return dct
+
+        if SPECIAL_TIMERANGE in dct:
+            trange = None
+            if dct["timerange"] is not None:
+                trange = (datetime.fromtimestamp(dct["timerange"][0]), datetime.fromtimestamp(dct["timerange"][1]))
+            trc = TimeRangeCount(timerange=trange)
+            trc.allcount = counterify(dct["allcount"])
+            trc.percount = {}
+            for k, d in dct["percount"].items():
+                trc.percount[k] = counterify(d)
+            return trc
+
+        if SPECIAL_TIMEDIVIDER in dct:
+            td = TimeDivider(TimePeriod(dct["period"]))
+            trcs = {}
+            for timestamp in dct["trcounts"]:
+                if timestamp == TimeDivider.ALL_KEY:
+                    trcs[timestamp] = dct["trcounts"][timestamp]
+                else:
+                    trcs[datetime.fromtimestamp(float(timestamp))] = dct["trcounts"][timestamp]
+            td.trcounts = trcs
+            return td
+
+        return dct
+
     with open(filename, 'r') as file:
-        return json.load(file)
+        return json.load(file, object_hook=decoder)
     return None
+
+def savejson(obj, filename):
+    obj["__special__"] = True
+    with open(filename, 'w') as file:
+        json.dump(obj, file, indent=2)
+    return
 
 def createcount():
     ctr = {
@@ -48,6 +88,14 @@ class TimeRangeCount:
                 print("! time range invalid (start, end)")
             elif self.timerange[0] > self.timerange[1]:
                 print("! time range invalid (start > end)")
+
+    def serializable(self):
+        s = {}
+        s[SPECIAL_TIMERANGE] = True
+        s["timerange"] = None if self.timerange is None else (self.timerange[0].timestamp(), self.timerange[1].timestamp())
+        s["allcount"] = self.allcount
+        s["percount"] = self.percount
+        return s
 
     def rangestr(self):
         if self.timerange is None:
@@ -81,7 +129,7 @@ class TimeRangeCount:
         countreacts(msg, self.allcount, self.percount)
 
 class TimeDivider:
-    ALL_KEY = 0
+    ALL_KEY = "TimeDivider_ALLKEY"
 
     def __init__(self, period=TimePeriod.ALL):
         self.trcounts = {}
@@ -90,8 +138,25 @@ class TimeDivider:
             print("! invalid period")
         self.trcounts[TimeDivider.ALL_KEY] = TimeRangeCount()
 
+    def serializable(self):
+        s = {}
+        s[SPECIAL_TIMEDIVIDER] = True
+        s["trcounts"] = {}
+        for k in self.trcounts:
+            if isinstance(k, datetime):
+                s["trcounts"][k.timestamp()] = self.trcounts[k].serializable()
+            else:
+                s["trcounts"][k] = self.trcounts[k].serializable()
+        s["period"] = self.period.value
+        return s
+
     def alltime(self):
         return self.trcounts[TimeDivider.ALL_KEY]
+
+    # sorted
+    def getallkeys(self):
+        keys = [k for k in self.trcounts if k != TimeDivider.ALL_KEY]
+        return sorted(keys)
 
     def message(self, msg):
         self.trcounts[TimeDivider.ALL_KEY].message(msg)
@@ -256,7 +321,7 @@ def printstickers(ctr, most_common=3):
         print("\t\t{}: {}".format(sticker[1], sticker[0]))
     return
 
-def analyze(chat, period=TimePeriod.ALL):
+def analyze(chat, period=TimePeriod.ALL, restrict_range=None):
     if "messages" not in chat:
         print("no messages")
         return
@@ -267,6 +332,7 @@ def analyze(chat, period=TimePeriod.ALL):
     #dtcount = TimeRangeCount()
     for msg in messages:
         #dtcount.message(msg)
+        # if restrict_range is None or msg in range:
         td.message(msg)
    
     return td
@@ -289,8 +355,9 @@ def printanalysis(td):
 
 def main():
     bjork = loadjson("bjork_message.json")
-    td = analyze(bjork, TimePeriod.YEAR)
+    td = analyze(bjork, TimePeriod.MONTH)
     printanalysis(td)
+    savejson(td.serializable(), "bjork_analysis.json")
     return
 
 if __name__ == '__main__':
