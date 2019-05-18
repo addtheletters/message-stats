@@ -82,6 +82,8 @@ def loadjson(filename):
             dct["reacts_given"] = Counter(dct["reacts_given"])
             dct["sticker_use"] = Counter(dct["sticker_use"])
             dct["photo_use"] = Counter(dct["photo_use"])
+            dct["link_domains"] = Counter(dct["link_domains"])
+            dct["emoji_use"] = Counter(dct["emoji_use"])
             return dct
 
         if SPECIAL_TIMERANGE in dct:
@@ -124,6 +126,7 @@ def createcount():
             "sticker" : 0,
             "photos" : 0,
             "share" : 0,
+            "emoji" : 0,
         }
 
     # "total" : counts up for each react (can be multiple per message)
@@ -134,6 +137,7 @@ def createcount():
     ctr["sticker_use"] = Counter()
     ctr["photo_use"] = Counter()
     ctr["link_domains"] = Counter()
+    ctr["emoji_use"] = Counter()
 
     return ctr
 
@@ -296,6 +300,34 @@ def countmessage(msg, ctr):
         #if "share_text" in msg["share"]:
         #if len(msg["share"].keys()) != 1 or "link" not in msg["share"]:
             #print(msg)
+
+    if "content" in msg:
+        # track emoji use
+        i = 0
+        while i < len(msg["content"]):
+            ch = msg["content"][i]
+            chsize = 1
+            if ch == '\u00f0': # emoticon or symbol
+                if i+7 < len(msg["content"]) and msg["content"][i+2] is '\u0087': # country code, 8 bytes
+                    chsize = 8
+                else: # 4 "bytes"
+                    chsize = 4
+            elif ch == '\u00e2' or ch == '\u00e3': # dingbat or other 3 "bytes"
+                chsize = 3
+            elif ch == '\u00c2': # copyright or registered sign
+                chsize = 2
+
+            if chsize != 1:
+                if i + chsize <= len(msg["content"]):
+                    #print("trying to understand ({}) {}".format(chsize, bytes(msg["content"][i:i+chsize], encoding="raw_unicode_escape")))
+                    emoji = weirdbytes_to_utf(msg["content"][i:i+chsize])
+                    ctr["emoji"] += 1
+                    ctr["emoji_use"][emoji] += 1
+                else:    # message ended before emoji detected?
+                    print("tried to find emoji past end of message")
+
+            i += chsize
+
     return
 
 def countreacts(msg, all_ctr, p_ctr):
@@ -356,7 +388,7 @@ def printreacts(ctr, total_msgs=None, most_common=2):
     while i < len(common_received) and displayed < most_common:
         react = common_received[i]
         if react[0] not in SPECIAL_REACT_KEYS:
-            print("\t\t{}: {}".format(getreactname(react[0]), ratiostr(react[1], ctr["reacts_received"]["total"])))
+            print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_received"]["total"])))
             displayed += 1
         i += 1
 
@@ -370,14 +402,16 @@ def printreacts(ctr, total_msgs=None, most_common=2):
         while i < len(common_given) and displayed < most_common:
             react = common_given[i]
             if react[0] not in SPECIAL_REACT_KEYS:
-                print("\t\t{}: {}".format(getreactname(react[0]), ratiostr(react[1], ctr["reacts_given"]["total"])))
+                print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_given"]["total"])))
                 displayed += 1
             i += 1
     return
 
-def getreactname(reactstr):
-    reactbytes = bytes(reactstr, encoding='raw_unicode_escape')
-    return unicodedata.name(reactbytes.decode("utf-8")[0])
+def weirdbytes_to_utf(ch):
+    return bytes(ch, encoding='raw_unicode_escape').decode("utf-8")
+
+def getemojiname(emojistr):
+    return unicodedata.name(weirdbytes_to_utf(emojistr)[0])
 
 def printstickers(ctr, most_common=3):
     common_stickers = ctr["sticker_use"].most_common()[:most_common]
@@ -421,8 +455,8 @@ def printanalysis(td):
 def main():
     bjork = loadjson("bjork_message.json")
     td = analyze(bjork, TimePeriod.MONTH)
-    printanalysis(td)
     savejson(td.serializable(), "bjork_analysis.json")
+    printanalysis(td)
     return
 
 if __name__ == '__main__':

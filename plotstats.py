@@ -3,13 +3,19 @@
 # graph results of facebook messenger chat history analysis
 
 import messages as msgs
+import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea
+from matplotlib.patches import Rectangle
 from datetime import datetime
+from random import randrange, random
 
 STANDARD_STICKER_SIZE = 230400
 
 def testplot(td):
+    # emoji density?
+
+
     plt.figure(figsize=(6, 4))
     plt.savefig("test.png", format="png", dpi=256)
     return
@@ -40,14 +46,18 @@ def stickercosinesimilarity(td):
     plt.savefig("stickercosinesimilarity.png", format="png", dpi=256)
     return
 
-def monthlyuse(td, countkey, usekey):
-    return
+def randcolor(previous=[]):
+    choices = ["red", "blue", "green", "yellow", "magenta", "orange", "cyan", "purple"]
+    for c in previous:
+        if c in choices:
+            choices.remove(c)
+    if len(choices) == 0:
+        return (random(), random(), random(), 1)
+    return choices[randrange(len(choices))]
 
-def monthlystickeruse(td):
-    num = 5
-    width = 0.37
-    # monthly most used stickers? exclude no-sticker months
-    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["sticker"] != 0]
+def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), labelrotate=45, labelsize=1):
+    # monthly most used? exclude no-use months
+    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount[countkey] != 0]
     timelabels = [dt.strftime("%b%y") for dt in times]
 
     rankings = []
@@ -55,17 +65,17 @@ def monthlystickeruse(td):
         rankings.append(([], [])) #(uris, counts)
 
     for dt in times:
-        stickers = td.trcounts[dt].allcount["sticker_use"].most_common()[:num]
+        items = td.trcounts[dt].allcount[usekey].most_common()[:num]
         for i in range(num):
-            if i < len(stickers):
-                rankings[i][0].append(stickers[i][0])
-                rankings[i][1].append(stickers[i][1])
+            if i < len(items):
+                rankings[i][0].append(items[i][0])
+                rankings[i][1].append(items[i][1])
             else:
                 rankings[i][0].append(None)
                 rankings[i][1].append(0)
     
-    plt.figure(figsize=(50,5))
-    plt.title("Monthly most-used stickers")
+    plt.figure(figsize=size)
+    plt.title("Monthly most-used {}".format(countkey) + "s" if countkey[-1] != 'i' else "")
     plt.ylabel("uses")
     ax = plt.gca()
     ax.tick_params(labelsize=4)
@@ -75,8 +85,33 @@ def monthlystickeruse(td):
     bases = []
     plt.xticks([x+(width * (num-1) / 2) for x in ind])
 
+    colors = {}
+
     for rank in rankings:
         barsets.append(ax.bar(ind, rank[1], width))
+
+        for ri in range(len(barsets[-1].patches)):
+            rect = barsets[-1].patches[ri]
+            if rank[0][ri] not in colors:
+                if rank[0][ri] == "www.reddit.com":
+                    colors[rank[0][ri]] = "peachpuff"
+                elif rank[0][ri] == "i.redd.it":
+                    colors[rank[0][ri]] = "orange"
+                elif rank[0][ri] == "twitter.com":
+                    colors[rank[0][ri]] = "skyblue"
+                elif rank[0][ri] == "www.youtube.com":
+                    colors[rank[0][ri]] = "indianred"
+                elif rank[0][ri] == "www.facebook.com":
+                    colors[rank[0][ri]] = "navy"
+                elif rank[0][ri] == "imgur.com":
+                    colors[rank[0][ri]] = "gray"
+                elif rank[0][ri] == "i.imgur.com":
+                    colors[rank[0][ri]] = "lightslategrey"
+                elif rank[0][ri] == "clips.twitch.tv":
+                    colors[rank[0][ri]] = "purple"
+                else:
+                    colors[rank[0][ri]] = randcolor(colors.values())
+            rect.set_color(colors[rank[0][ri]])
 
         # save x positions of bars
         for x in ind:
@@ -86,19 +121,35 @@ def monthlystickeruse(td):
         for i in range(len(ind)):
             ind[i] = ind[i] + width
 
-    # show stickers as x-axis labels
-    ax = plt.gca()
+    # show images as x-axis labels
     i = 0
     for rank in range(num):
         for pair in rankings[rank][0]:
             if pair != None:
-                addpngxlabel(pair, ax, bases[i], 0.05)
+                if imglabel:
+                    addpngxlabel(pair, ax, bases[i], 0.05)
+                else:
+                    addtextxlabel(pair, ax, bases[i], rotate=labelrotate, size=labelsize)
             i += 1
+
     ax.set_xticklabels(timelabels)
 
-    plt.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.2)
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.2)
 
-    plt.savefig("monthlystickeruse.png", format="png", dpi=256)
+    plt.savefig("monthly{}use.png".format(countkey), format="png", dpi=256)
+    return
+
+def monthlystickeruse(td):
+    monthlyuse(td, "sticker", "sticker_use", size=(50,5))
+    return
+
+def monthlylinkuse(td):
+    monthlyuse(td, "share", "link_domains", num=5, imglabel=False, size=(20,5))
+    return
+
+def monthlyemojiuse(td):
+    matplotlib.rc('font', family='DejaVu Sans')
+    monthlyuse(td, "emoji", "emoji_use", num=4, imglabel=False, size=(20, 5), labelrotate=0, labelsize=2)
     return
 
 def monthlyreactgivendensity(td):
@@ -122,8 +173,9 @@ def monthlyreactgivendensity(td):
     for i in range(len(times)):
         dt = times[i]
         for name in names:
-            personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
-            personal_reacts[name][i] = td.trcounts[dt].percount[name]["reacts_given"]["total"]
+            if name in td.trcounts[dt].percount:
+                personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
+                personal_reacts[name][i] = td.trcounts[dt].percount[name]["reacts_given"]["total"]
 
     personal_density = {}
     for name in personal_reacts:
@@ -240,7 +292,23 @@ def addpngxlabel(filename, ax, xcoord, scale=0.02):
                     xycoords=("data", "axes fraction"),
                     boxcoords="offset points",
                     box_alignment=(.5, 1),
-                    bboxprops={"edgecolor" : "none"})
+                    bboxprops={"edgecolor":"none", "alpha":0})
+    ax.add_artist(ab)
+    return
+
+def addtextxlabel(txt, ax, xcoord, rotate=45, size=1):
+    textbox = TextArea(txt, textprops={
+        "fontsize":3*size,
+        "rotation":rotate,
+        "ha":"right",
+        "rotation_mode":"anchor",
+        "fontstretch":"ultra-condensed"
+        })
+    ab = AnnotationBbox(textbox, (xcoord, 0), xybox=(0, -15),
+                    xycoords=("data", "axes fraction"),
+                    boxcoords="offset points",
+                    box_alignment=(0, 0),
+                    bboxprops={"edgecolor":"none", "alpha":0})
     ax.add_artist(ab)
     return
 
@@ -260,11 +328,14 @@ def main():
 
     print("analysis loaded, plotting...")
 
-    testplot(td)
+    #testplot(td)
     #stickercosinesimilarity(td)
+    #monthlyreactgivendensity(td)
     #monthlystickeruse(td)
-    #alltimestickers(td)
+    #monthlylinkuse(td)
+    #monthlyemojiuse(td)
     #monthlyactivity(td)
+    #alltimestickers(td)
     return
 
 if __name__ == '__main__':
