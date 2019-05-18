@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 
 # perform some analysis on a downloaded Facebook Messenger chat history json
-import json, unicodedata
+import json, unicodedata, urllib.parse
+import numpy as np
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
@@ -10,12 +11,69 @@ SPECIAL_REACT_KEYS = ["total", "messages"]
 SPECIAL_TIMERANGE = "__timerange__"
 SPECIAL_TIMEDIVIDER = "__timedivider__"
 
+EVERYONE_STICKER_KEY = "everyone"
+
+# things to try still:
+# emoji use
+# word use / misspellings
+# sentiment analysis
+
 class TimePeriod(Enum):
     ALL = 0
     YEAR = 1
     MONTH = 2
     WEEK = 3
     DAY = 4
+
+def stickersimilarity(trc, mincount=3, excludeself=False):
+    stickers = []
+    names = [EVERYONE_STICKER_KEY]
+    usage = {}
+
+    for name in trc.percount:
+        names.append(name)
+
+    for name in names:
+        usage[name] = [] # personal usage vector
+
+    for stk, ct in trc.allcount["sticker_use"].items():
+        if ct < mincount:
+            continue
+        stickers.append(stk)
+        usage[EVERYONE_STICKER_KEY].append(ct)
+        for name in trc.percount:
+            if stk in trc.percount[name]["sticker_use"]:
+                usage[name].append(trc.percount[name]["sticker_use"][stk])
+            else:
+                usage[name].append(0)
+
+    print("{} stickers with usage over {}.".format(len(stickers), mincount))
+
+    similarity = [[0] * len(names) for _ in range(len(names))]
+    for i in range(len(similarity)):
+        for j in range(len(similarity[0])):
+            va = np.array(usage[names[i]])
+            vb = np.array(usage[names[j]])
+
+            if excludeself:
+                if names[i] == EVERYONE_STICKER_KEY and names[j] == EVERYONE_STICKER_KEY:
+                    va, vb = va - vb, vb - va 
+                elif names[i] == EVERYONE_STICKER_KEY:
+                    va = va - vb
+                elif names[j] == EVERYONE_STICKER_KEY:
+                    vb = vb - va
+
+            va = (va / np.linalg.norm(va) if np.linalg.norm(va) != 0 else va)
+            vb = (vb / np.linalg.norm(vb) if np.linalg.norm(vb) != 0 else vb)
+            divisor = (np.linalg.norm(va) * np.linalg.norm(vb))
+            if divisor == 0:
+                divisor = 1
+            similarity[i][j] = np.dot(va, vb) / divisor
+
+    if excludeself:
+        names[0] += " else"
+
+    return (names, similarity, stickers, usage)
 
 def loadjson(filename):
     def decoder(dct):
@@ -34,7 +92,7 @@ def loadjson(filename):
             trc.allcount = counterify(dct["allcount"])
             trc.percount = {}
             for k, d in dct["percount"].items():
-                trc.percount[k] = counterify(d)
+                trc.percount[k] = counterify(d) 
             return trc
 
         if SPECIAL_TIMEDIVIDER in dct:
@@ -75,6 +133,7 @@ def createcount():
 
     ctr["sticker_use"] = Counter()
     ctr["photo_use"] = Counter()
+    ctr["link_domains"] = Counter()
 
     return ctr
 
@@ -229,8 +288,14 @@ def countmessage(msg, ctr):
                 photo = phobj["uri"]
             ctr["photo_use"][photo] += 1
 
-    # TODO track shared link domains
-
+    # track shared link domains
+    if "share" in msg:
+        if "link" in msg["share"]:
+            domain = urllib.parse.urlparse(msg["share"]["link"]).netloc
+            ctr["link_domains"][domain] += 1
+        #if "share_text" in msg["share"]:
+        #if len(msg["share"].keys()) != 1 or "link" not in msg["share"]:
+            #print(msg)
     return
 
 def countreacts(msg, all_ctr, p_ctr):

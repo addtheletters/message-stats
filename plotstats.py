@@ -7,10 +7,40 @@ import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from datetime import datetime
 
-STANDARD_SIZE = 230400
+STANDARD_STICKER_SIZE = 230400
 
 def testplot(td):
+    plt.figure(figsize=(6, 4))
     plt.savefig("test.png", format="png", dpi=256)
+    return
+
+def stickercosinesimilarity(td):
+    mincount = 2
+    ss = msgs.stickersimilarity(td.alltime(), mincount=mincount, excludeself=True)
+    names = ss[0]
+    mat = ss[1]
+    ind = [i for i in range(len(names))]
+
+    plt.figure(figsize=(5,4.5))
+    plt.title("Sticker Use Cosine Similarity (mincount {})".format(mincount))
+    ax = plt.gca()
+    ax.imshow(mat)
+
+    ax.tick_params(labelsize=5)
+    ax.set_xticks(ind)
+    ax.set_yticks(ind)
+    ax.set_xticklabels(names)
+    ax.set_yticklabels(names)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+    for i in ind:
+        for j in ind:
+            txt = ax.text(j, i, round(mat[i][j], 3), ha="center", va="center", color="w")
+
+    plt.savefig("stickercosinesimilarity.png", format="png", dpi=256)
+    return
+
+def monthlyuse(td, countkey, usekey):
     return
 
 def monthlystickeruse(td):
@@ -200,9 +230,10 @@ def alltimestickers(td):
 
 def addpngxlabel(filename, ax, xcoord, scale=0.02):
     img = plt.imread(filename, format='png')
+    # scale large stickers to roughly match the standard
     dim = (img.size + img[0].size) / 2
-    if dim > 230400:
-        scale = scale * (230400 / dim)
+    if dim > STANDARD_STICKER_SIZE:
+        scale = scale * (STANDARD_STICKER_SIZE / dim)
     imagebox = OffsetImage(img, zoom=scale)
     imagebox.image.axes = ax
     ab = AnnotationBbox(imagebox, (xcoord, 0), xybox=(0, -16),
@@ -229,8 +260,9 @@ def main():
 
     print("analysis loaded, plotting...")
 
-    #testplot(td)
-    monthlystickeruse(td)
+    testplot(td)
+    #stickercosinesimilarity(td)
+    #monthlystickeruse(td)
     #alltimestickers(td)
     #monthlyactivity(td)
     return
