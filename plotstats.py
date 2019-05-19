@@ -13,12 +13,13 @@ from matplotlib.patches import Rectangle
 from datetime import datetime
 from random import randrange, random
 
+#from spellchecker import SpellChecker
+#SPELLCHECKER = SpellChecker(distance=1)
+
 STANDARD_STICKER_SIZE = 230400
-OUTLIER_MARK = 200
-DIAG_LABEL_FONT_SIZE = 3
+DIAG_LABEL_FONT_SIZE = 4
 
-#print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
-
+COLOR_CHOICES = ["red", "blue", "green", "magenta", "orange", "cyan", "purple"]
 DOMAIN_COLORS = {
     "www.reddit.com":"orange",
     "i.redd.it":"peachpuff",
@@ -30,8 +31,10 @@ DOMAIN_COLORS = {
     "clips.twitch.tv":"purple",
 }
 
+#print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
 EMOJI_FONT_FILE = "/mnt/c/Windows/Fonts/seguiemj.ttf"
 emoji_font = fm.FontProperties(fname=EMOJI_FONT_FILE, size=DIAG_LABEL_FONT_SIZE)
+
 
 def test_plot(td):
     plt.figure(figsize=(6, 4))
@@ -48,7 +51,6 @@ def sticker_spam(td, xsize=4, ysize=3, times=1500):
 
     stickers = td.alltime().allcount["sticker_use"].most_common()
     stktotal = td.alltime().allcount["sticker"]
-    print(len(stickers))
 
     def randsticker(stkrs):
         choice = randrange(0, stktotal-1)
@@ -95,8 +97,9 @@ def sticker_similarity(td, mincount=2):
     plt.savefig("stickercosinesimilarity.png", format="png", dpi=256)
     return
 
+# choose a random color from choices, or generate a random one. don't repeat a choice
 def randcolor(previous=[]):
-    choices = ["red", "blue", "green", "yellow", "magenta", "orange", "cyan", "purple"]
+    choices = COLOR_CHOICES[:]
     for c in previous:
         if c in choices:
             choices.remove(c)
@@ -104,7 +107,15 @@ def randcolor(previous=[]):
         return (random(), random(), random(), 1)
     return choices[randrange(len(choices))]
 
-def by_period_use(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), showemoji=False):
+# reject if name is too short
+def minlength_filter(minlength):
+    return (lambda x : (len(x[0]) >= minlength), "min-length {}".format(minlength))
+
+# # reject if word is spelled correctly
+# def spelling_filter():
+#     return (lambda x : len(SPELLCHECKER.known([x[0]])) != 1, "misspelled")
+
+def by_period_use(td, countkey, usekey, usefilter=None, num=5, width=0.37, imglabel=False, size=(9,4), showemoji=False, outliermark=300):
     periodstr = td.period.describe()
 
     # most used in each time period; exclude no-use time ranges
@@ -118,20 +129,26 @@ def by_period_use(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(
     outliers = []
 
     for dt in times:
-        items = td.trcounts[dt].allcount[usekey].most_common()[:num]
+        items = td.trcounts[dt].allcount[usekey].most_common()
+        if usefilter:
+            items = list(filter(usefilter[0], items))
+        items = items[:num]
+
         for i in range(num):
             if i < len(items):
                 rankings[i][0].append(items[i][0])
                 rankings[i][1].append(items[i][1])
-                if rankings[i][1][-1] > OUTLIER_MARK:
+                if rankings[i][1][-1] > outliermark:
                     outliers.append((items[i][0], times.index(dt), items[i][1]))
-                    rankings[i][1][-1] = OUTLIER_MARK
+                    rankings[i][1][-1] = outliermark
             else:
                 rankings[i][0].append(None)
                 rankings[i][1].append(0)
     
     plt.figure(figsize=size)
-    plt.title("{} most-used {}".format(periodstr.capitalize(), countkey) + ("s" if countkey[-1] != 'i' else ""))
+    plt.title("{} most-used {}".format(periodstr.capitalize(), countkey) 
+        + ("s" if countkey[-1] not in "is" else "") 
+        + ((" (" + usefilter[1] + ")") if usefilter else ""))
     plt.ylabel("uses")
     ax = plt.gca()
     ax.tick_params(labelsize=3)
@@ -185,7 +202,7 @@ def by_period_use(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(
                             text = text + " > " + pair
                     for outlier in outliers:
                         if pair == outlier[0] and dti == outlier[1]:
-                            text = "(outlier {} > {}) ".format(outlier[2], OUTLIER_MARK) + text
+                            text = "(outlier {} > {}) ".format(outlier[2], outliermark) + text
                             break
                     if showemoji:
                         add_text_xlabel(text, ax, bases[i], rotate=45, fontprops=emoji_font)
@@ -195,13 +212,13 @@ def by_period_use(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(
 
     ax.set_xticklabels(timelabels)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.26)
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.20)
 
     plt.savefig("{}{}use.png".format(periodstr, countkey), format="png", dpi=256)
     return
 
 def sticker_use(td):
-    by_period_use(td, "sticker", "sticker_use", size=(50,5))
+    by_period_use(td, "sticker", "sticker_use", imglabel=True, size=(50,5))
     return
 
 def link_use(td):
@@ -211,6 +228,10 @@ def link_use(td):
 def emoji_use(td):
     matplotlib.rc('font', family='DejaVu Sans')
     by_period_use(td, "emoji", "emoji_use", num=3, imglabel=False, size=(40,5), showemoji=True)
+    return
+
+def words_use(td):
+    by_period_use(td, "words", "words_use", num=5, usefilter=minlength_filter(5), size=(15, 5), outliermark=2200, showemoji=True)
     return
 
 def personal_reacts_given_density(td):
@@ -386,13 +407,14 @@ def main():
     print("analysis loaded, plotting...")
 
     test_plot(td)
-    sticker_spam(td)
+    #sticker_spam(td)
     #sticker_similarity(td)
     #personal_reacts_given_density(td)
     #reacts_received_density(td)
     #sticker_use(td)
     #link_use(td)
     #emoji_use(td)
+    words_use(td)
     #activity(td)
     #all_time_stickers(td)
 

@@ -73,7 +73,6 @@ class TimePeriod(Enum):
 TEST_PERIOD = TimePeriod.MONTH
 
 # things to try still:
-# word use / misspellings
 # sentiment analysis
 
 # cosine similarity of participants' sticker usage vectors
