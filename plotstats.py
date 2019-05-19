@@ -7,6 +7,7 @@ import messages as msgs
 import unicodedata
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea
 from matplotlib.patches import Rectangle
 from datetime import datetime
@@ -16,9 +17,20 @@ STANDARD_STICKER_SIZE = 230400
 OUTLIER_MARK = 300
 DIAG_LABEL_FONT_SIZE = 3.5
 
-import matplotlib.font_manager as fm
-print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
+#print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
 #matplotlib.rc('font', family='Arial')
+
+DOMAIN_COLORS = {
+    "www.reddit.com":"orange",
+    "i.redd.it":"peachpuff",
+    "twitter.com":"skyblue",
+    "www.youtube.com":"indianred",
+    "www.facebook.com":"navy",
+    "imgur.com":"gray",
+    "i.imgur.com":"lightslategrey",
+    "clips.twitch.tv":"purple",
+}
+
 ufont = fm.FontProperties(fname="/mnt/c/Windows/Fonts/seguiemj.ttf", size=DIAG_LABEL_FONT_SIZE)
 
 def testplot(td):
@@ -79,7 +91,7 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
                 rankings[i][0].append(items[i][0])
                 rankings[i][1].append(items[i][1])
                 if rankings[i][1][-1] > OUTLIER_MARK:
-                    outliers.append((items[i][0], times.index(dt)))
+                    outliers.append((items[i][0], times.index(dt), items[i][1]))
                     rankings[i][1][-1] = OUTLIER_MARK
             else:
                 rankings[i][0].append(None)
@@ -104,22 +116,8 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
         for ri in range(len(barsets[-1].patches)):
             rect = barsets[-1].patches[ri]
             if rank[0][ri] not in colors:
-                if rank[0][ri] == "www.reddit.com":
-                    colors[rank[0][ri]] = "peachpuff"
-                elif rank[0][ri] == "i.redd.it":
-                    colors[rank[0][ri]] = "orange"
-                elif rank[0][ri] == "twitter.com":
-                    colors[rank[0][ri]] = "skyblue"
-                elif rank[0][ri] == "www.youtube.com":
-                    colors[rank[0][ri]] = "indianred"
-                elif rank[0][ri] == "www.facebook.com":
-                    colors[rank[0][ri]] = "navy"
-                elif rank[0][ri] == "imgur.com":
-                    colors[rank[0][ri]] = "gray"
-                elif rank[0][ri] == "i.imgur.com":
-                    colors[rank[0][ri]] = "lightslategrey"
-                elif rank[0][ri] == "clips.twitch.tv":
-                    colors[rank[0][ri]] = "purple"
+                if rank[0][ri] in DOMAIN_COLORS.keys():
+                    colors[rank[0][ri]] = DOMAIN_COLORS[rank[0][ri]]
                 else:
                     colors[rank[0][ri]] = randcolor(colors.values())
             rect.set_color(colors[rank[0][ri]])
@@ -154,7 +152,7 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
                             text = text + " > " + pair
                     for outlier in outliers:
                         if pair == outlier[0] and dti == outlier[1]:
-                            text = "(> {} outlier) ".format(OUTLIER_MARK) + text
+                            text = "(outlier {} > {}) ".format(outlier[2], OUTLIER_MARK) + text
                             break
                     if showemoji:
                         addtextxlabel(text, ax, bases[i], rotate=45, fontprops=ufont)
@@ -174,7 +172,7 @@ def monthlystickeruse(td):
     return
 
 def monthlylinkuse(td):
-    monthlyuse(td, "share", "link_domains", num=5, imglabel=False, size=(20,5))
+    monthlyuse(td, "share", "share_use", num=5, imglabel=False, size=(20,5))
     return
 
 def monthlyemojiuse(td):
@@ -184,7 +182,7 @@ def monthlyemojiuse(td):
 
 def monthlyreactgivendensity(td):
     # exclude months before reacts existed
-    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received"]["total"] != 0]
+    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received_total"] != 0]
     timelabels = [dt.strftime("%b%y") for dt in times]
 
     activity = []
@@ -205,7 +203,7 @@ def monthlyreactgivendensity(td):
         for name in names:
             if name in td.trcounts[dt].percount:
                 personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
-                personal_reacts[name][i] = td.trcounts[dt].percount[name]["reacts_given"]["total"]
+                personal_reacts[name][i] = td.trcounts[dt].percount[name]["reacts_given"]
 
     personal_density = {}
     for name in personal_reacts:
@@ -224,14 +222,14 @@ def monthlyreactgivendensity(td):
 
 def monthlyreactdensity(td):
     # exclude months before reacts existed
-    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received"]["total"] != 0]
+    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received_total"] != 0]
     timelabels = [dt.strftime("%b%y") for dt in times]
 
     activity = []
     reacts = []
     for dt in times:
         activity.append(td.trcounts[dt].allcount["msg"])
-        reacts.append(td.trcounts[dt].allcount["reacts_received"]["total"])
+        reacts.append(td.trcounts[dt].allcount["reacts_received_total"])
 
     density = [reacts[i] / activity[i] for i in range(len(activity))]
 
@@ -361,7 +359,7 @@ def main():
 
     #testplot(td)
     #stickercosinesimilarity(td)
-    #monthlyreactgivendensity(td)
+    monthlyreactgivendensity(td)
     #monthlystickeruse(td)
     monthlylinkuse(td)
     monthlyemojiuse(td)

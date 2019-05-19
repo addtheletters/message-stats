@@ -1,0 +1,13 @@
+# zipped data
+*.zip
+
+# data
+*.json
+*.txt
+
+# messages folder
+/messages
+
+# plots
+*.png
+*.PNG

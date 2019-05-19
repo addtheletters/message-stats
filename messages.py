@@ -7,11 +7,17 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 
-SPECIAL_REACT_KEYS = ["total", "messages"]
 SPECIAL_TIMERANGE = "__timerange__"
 SPECIAL_TIMEDIVIDER = "__timedivider__"
 
 EVERYONE_STICKER_KEY = "everyone"
+COUNTER_KEYS = [ "reacts_received_use",
+                 "reacts_given_use",
+                 "sticker_use",
+                 "photo_use",
+                 "share_use",
+                 "emoji_use",
+                 "words_use" ]
 
 # things to try still:
 # word use / misspellings
@@ -74,40 +80,17 @@ def stickersimilarity(trc, mincount=3, excludeself=False):
 
     return (names, similarity, stickers, usage)
 
+def counterify(dct):
+    for key in COUNTER_KEYS:
+        dct[key] = Counter(dct[key])
+    return dct
+
 def loadjson(filename):
     def decoder(dct):
-        def counterify(dct):
-            dct["reacts_received"] = Counter(dct["reacts_received"])
-            dct["reacts_given"] = Counter(dct["reacts_given"])
-            dct["sticker_use"] = Counter(dct["sticker_use"])
-            dct["photo_use"] = Counter(dct["photo_use"])
-            dct["link_domains"] = Counter(dct["link_domains"])
-            dct["emoji_use"] = Counter(dct["emoji_use"])
-            dct["word_use"] = Counter(dct["word_use"])
-            return dct
-
         if SPECIAL_TIMERANGE in dct:
-            trange = None
-            if dct["timerange"] is not None:
-                trange = (datetime.fromtimestamp(dct["timerange"][0]), datetime.fromtimestamp(dct["timerange"][1]))
-            trc = TimeRangeCount(timerange=trange)
-            trc.allcount = counterify(dct["allcount"])
-            trc.percount = {}
-            for k, d in dct["percount"].items():
-                trc.percount[k] = counterify(d) 
-            return trc
-
+            return TimeRangeCount.decode(dct)
         if SPECIAL_TIMEDIVIDER in dct:
-            td = TimeDivider(TimePeriod(dct["period"]))
-            trcs = {}
-            for timestamp in dct["trcounts"]:
-                if timestamp == TimeDivider.ALL_KEY:
-                    trcs[timestamp] = dct["trcounts"][timestamp]
-                else:
-                    trcs[datetime.fromtimestamp(float(timestamp))] = dct["trcounts"][timestamp]
-            td.trcounts = trcs
-            return td
-
+            return TimeDivider.decode(dct)
         return dct
 
     with open(filename, 'r') as file:
@@ -128,19 +111,20 @@ def createcount():
             "share" : 0,
             "emoji" : 0,
             "words" : 0,
+            "reacts_given" : 0,
+            "reacts_received_messages" : 0, # counts up only once for each message that gets at least one react
+            "reacts_received_total" : 0,    # counts up for each react (can be multiple per message)
         }
 
-    # "total" : counts up for each react (can be multiple per message)
-    # "messages" : counts up only once for each message that gets at least one react
-    ctr["reacts_received"] = Counter(total=0, messages=0)
-    ctr["reacts_given"] = Counter(total=0)
+    ctr["reacts_received_use"] = Counter()
+    ctr["reacts_given_use"] = Counter()
 
     ctr["sticker_use"] = Counter()
     ctr["photo_use"] = Counter()
-    ctr["link_domains"] = Counter()
+    ctr["share_use"] = Counter()
 
     ctr["emoji_use"] = Counter()
-    ctr["word_use"] = Counter()
+    ctr["words_use"] = Counter()
     return ctr
 
 class TimeRangeCount:
@@ -153,6 +137,18 @@ class TimeRangeCount:
                 print("! time range invalid (start, end)")
             elif self.timerange[0] > self.timerange[1]:
                 print("! time range invalid (start > end)")
+
+    @staticmethod
+    def decode(dct):
+        trange = None
+        if dct["timerange"] is not None:
+            trange = (datetime.fromtimestamp(dct["timerange"][0]), datetime.fromtimestamp(dct["timerange"][1]))
+        trc = TimeRangeCount(timerange=trange)
+        trc.allcount = counterify(dct["allcount"])
+        trc.percount = {}
+        for k, d in dct["percount"].items():
+            trc.percount[k] = counterify(d) 
+        return trc
 
     def serializable(self):
         s = {}
@@ -194,6 +190,18 @@ class TimeDivider:
         if self.period not in TimePeriod:
             print("! invalid period")
         self.trcounts[TimeDivider.ALL_KEY] = TimeRangeCount()
+
+    @staticmethod
+    def decode(dct):
+        td = TimeDivider(TimePeriod(dct["period"]))
+        trcs = {}
+        for timestamp in dct["trcounts"]:
+            if timestamp == TimeDivider.ALL_KEY:
+                trcs[timestamp] = dct["trcounts"][timestamp]
+            else:
+                trcs[datetime.fromtimestamp(float(timestamp))] = dct["trcounts"][timestamp]
+        td.trcounts = trcs
+        return td
 
     def serializable(self):
         s = {}
@@ -300,8 +308,8 @@ def countmessage(msg, ctr, p_ctr):
     if "share" in msg:
         if "link" in msg["share"]:
             domain = urllib.parse.urlparse(msg["share"]["link"]).netloc
-            ctr["link_domains"][domain] += 1
-            p_ctr[sender]["link_domains"][domain] += 1
+            ctr["share_use"][domain] += 1
+            p_ctr[sender]["share_use"][domain] += 1
         #if "share_text" in msg["share"]:
         #if len(msg["share"].keys()) != 1 or "link" not in msg["share"]:
             #print(msg)
@@ -341,9 +349,9 @@ def countmessage(msg, ctr, p_ctr):
         # track word use
         for word in msg["content"].split(" "):
             ctr["words"] += 1
-            ctr["word_use"][word] += 1
+            ctr["words_use"][word] += 1
             p_ctr[sender]["words"] += 1
-            p_ctr[sender]["word_use"][word] += 1
+            p_ctr[sender]["words_use"][word] += 1
 
     return
 
@@ -355,8 +363,8 @@ def countreacts(msg, all_ctr, p_ctr):
     if "reactions" in msg:
         name = msg["sender_name"]
         
-        all_ctr["reacts_received"]["messages"] += 1
-        p_ctr[name]["reacts_received"]["messages"] += 1
+        all_ctr["reacts_received_messages"] += 1
+        p_ctr[name]["reacts_received_messages"] += 1
 
         for react in msg["reactions"]:
             content = react["reaction"]
@@ -366,18 +374,18 @@ def countreacts(msg, all_ctr, p_ctr):
                 p_ctr[actor] = createcount()
             
             # message poster
-            p_ctr[name]["reacts_received"]["total"] += 1
-            p_ctr[name]["reacts_received"][content] += 1
+            p_ctr[name]["reacts_received_total"] += 1
+            p_ctr[name]["reacts_received_use"][content] += 1
 
             # reactor
-            p_ctr[actor]["reacts_given"]["total"] += 1
-            p_ctr[actor]["reacts_given"][content] += 1
+            p_ctr[actor]["reacts_given"] += 1
+            p_ctr[actor]["reacts_given_use"][content] += 1
 
             # total
-            all_ctr["reacts_given"]["total"] += 1
-            all_ctr["reacts_given"][content] += 1
-            all_ctr["reacts_received"]["total"] += 1
-            all_ctr["reacts_received"][content] += 1
+            all_ctr["reacts_given"] += 1
+            all_ctr["reacts_given_use"][content] += 1
+            all_ctr["reacts_received_total"] += 1
+            all_ctr["reacts_received_use"][content] += 1
     return
 
 
@@ -394,34 +402,24 @@ def printcount(ctr):
 
 def printreacts(ctr, total_msgs=None, most_common=2):
     print("reacts: ")
-    print("received on: " + ratiostr(ctr["reacts_received"]["messages"], ctr["msg"]))
-    print("received total: {} ({} / message)".format(ctr["reacts_received"]["total"], round(ctr["reacts_received"]["total"] / ctr["msg"], 3)))
+    print("received on: " + ratiostr(ctr["reacts_received_messages"], ctr["msg"]))
+    print("received total: {} ({} / message)".format(ctr["reacts_received_total"], round(ctr["reacts_received_total"] / ctr["msg"], 3)))
 
     # try to show the most_common most common reacts, skipping the "total" and "message" counters
-    common_received = ctr["reacts_received"].most_common()[:most_common+len(SPECIAL_REACT_KEYS)]
+    common_received = ctr["reacts_received_use"].most_common()[:most_common]
     print("\t{} most common received reacts:".format(most_common))
-
-    i, displayed = 0, 0
-    while i < len(common_received) and displayed < most_common:
+    for i in range(len(common_received)):
         react = common_received[i]
-        if react[0] not in SPECIAL_REACT_KEYS:
-            print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_received"]["total"])))
-            displayed += 1
-        i += 1
+        print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_received_total"])))
 
     # overall total provided, so this is a specific user; show this since received/given differ
     if total_msgs:
-        print("given: " + ratiostr(ctr["reacts_given"]["total"], total_msgs))
-
-        common_given = ctr["reacts_given"].most_common()[:most_common+len(SPECIAL_REACT_KEYS)]
-        i, displayed = 0, 0
+        print("given: " + ratiostr(ctr["reacts_given"], total_msgs))
+        common_given = ctr["reacts_given_use"].most_common()[:most_common]
         print("\t{} most common given reacts:".format(most_common))
-        while i < len(common_given) and displayed < most_common:
+        for i in range(len(common_given)):
             react = common_given[i]
-            if react[0] not in SPECIAL_REACT_KEYS:
-                print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_given"]["total"])))
-                displayed += 1
-            i += 1
+            print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_given"])))
     return
 
 def weirdbytes_to_utf(ch):
