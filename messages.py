@@ -76,7 +76,8 @@ TEST_PERIOD = TimePeriod.MONTH
 # word use / misspellings
 # sentiment analysis
 
-def stickersimilarity(trc, mincount=3, excludeself=False):
+# cosine similarity of participants' sticker usage vectors
+def sticker_similarity(trc, mincount=3, excludeself=False):
     stickers = []
     names = [EVERYONE_STICKER_KEY]
     usage = {}
@@ -149,7 +150,7 @@ def savejson(obj, filename):
         json.dump(obj, file, indent=2)
     return
 
-def createcount():
+def create_count():
     ctr = {
             "msg" : 0,
             "sticker" : 0,
@@ -176,8 +177,8 @@ def createcount():
 class TimeRangeCount:
     def __init__(self, timerange=None):
         self.timerange = timerange
-        self.allcount = createcount()
-        self.percount = defaultdict(createcount)
+        self.allcount = create_count()
+        self.percount = defaultdict(create_count)
         if timerange != None:
             if len(timerange) != 2:
                 print("! time range invalid (start, end)")
@@ -222,10 +223,10 @@ class TimeRangeCount:
                 return
 
         # count things
-        countmessage(msg, self.allcount, self.percount)
+        count_message(msg, self.allcount, self.percount)
 
         # tally reactions
-        countreacts(msg, self.allcount, self.percount)
+        count_reacts(msg, self.allcount, self.percount)
 
 class TimeDivider:
     ALL_KEY = "TimeDivider_ALLKEY"
@@ -289,8 +290,7 @@ class TimeDivider:
         elif self.period is TimePeriod.MONTH:
             return datetime(year=dt.year, month=dt.month, day=1)
         elif self.period is TimePeriod.WEEK:
-            delta = timedelta(days=dt.weekday())
-            pdt = dt - delta
+            pdt = dt - timedelta(days=dt.weekday())
             return datetime(year=pdt.year, month=pdt.month, day=pdt.day) # key using first day of week
         elif self.period is TimePeriod.DAY:
             return datetime(year=dt.year, month=dt.month, day=dt.day)
@@ -315,7 +315,7 @@ class TimeDivider:
     def createtrcount(self, key):
         return TimeRangeCount(self.getrange(key))
 
-def countmessage(msg, ctr, p_ctr):
+def count_message(msg, ctr, p_ctr):
     if ctr is None:
         print("no count object")
         return
@@ -324,7 +324,7 @@ def countmessage(msg, ctr, p_ctr):
     if "sender_name" in msg:
         sender = msg["sender_name"]    
     if sender not in p_ctr:
-        p_ctr[sender] = createcount()
+        p_ctr[sender] = create_count()
 
     ctr["msg"] += 1
     p_ctr[sender]["msg"] += 1
@@ -403,7 +403,7 @@ def countmessage(msg, ctr, p_ctr):
 
     return
 
-def countreacts(msg, all_ctr, p_ctr):
+def count_reacts(msg, all_ctr, p_ctr):
     if all_ctr is None or p_ctr is None:
         print("missing count object")
         return
@@ -419,7 +419,7 @@ def countreacts(msg, all_ctr, p_ctr):
             actor = react["actor"]
 
             if actor not in p_ctr:
-                p_ctr[actor] = createcount()
+                p_ctr[actor] = create_count()
             
             # message poster
             p_ctr[name]["reacts_received_total"] += 1
@@ -440,15 +440,15 @@ def countreacts(msg, all_ctr, p_ctr):
 def ratiostr(a, b):
     return str(a) + " / " + str(b) + " (" + str(round(a/b * 100, 3)) + " %)"
 
-def printcount(ctr):
+def print_count(ctr):
     print("stickers: " + ratiostr(ctr["sticker"], ctr["msg"]))
-    printstickers(ctr, 2)
+    print_stickers(ctr, 2)
     print("photos: " + ratiostr(ctr["photos"], ctr["msg"]))
     print("links: " + ratiostr(ctr["share"], ctr["msg"]))
     print()
     return
 
-def printreacts(ctr, total_msgs=None, most_common=2):
+def print_reacts(ctr, total_msgs=None, most_common=2):
     print("reacts: ")
     print("received on: " + ratiostr(ctr["reacts_received_messages"], ctr["msg"]))
     print("received total: {} ({} / message)".format(ctr["reacts_received_total"], round(ctr["reacts_received_total"] / ctr["msg"], 3)))
@@ -458,7 +458,7 @@ def printreacts(ctr, total_msgs=None, most_common=2):
     print("\t{} most common received reacts:".format(most_common))
     for i in range(len(common_received)):
         react = common_received[i]
-        print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_received_total"])))
+        print("\t\t{}: {}".format(get_emoji_name(react[0]), ratiostr(react[1], ctr["reacts_received_total"])))
 
     # overall total provided, so this is a specific user; show this since received/given differ
     if total_msgs:
@@ -467,16 +467,16 @@ def printreacts(ctr, total_msgs=None, most_common=2):
         print("\t{} most common given reacts:".format(most_common))
         for i in range(len(common_given)):
             react = common_given[i]
-            print("\t\t{}: {}".format(getemojiname(react[0]), ratiostr(react[1], ctr["reacts_given"])))
+            print("\t\t{}: {}".format(get_emoji_name(react[0]), ratiostr(react[1], ctr["reacts_given"])))
     return
 
 def weirdbytes_to_utf(ch):
     return bytes(ch, encoding='raw_unicode_escape').decode("utf-8")
 
-def getemojiname(emojistr):
+def get_emoji_name(emojistr):
     return unicodedata.name(weirdbytes_to_utf(emojistr)[0])
 
-def printstickers(ctr, most_common=3):
+def print_stickers(ctr, most_common=3):
     common_stickers = ctr["sticker_use"].most_common()[:most_common]
     print("\t{} most common stickers:".format(most_common))
     for sticker in common_stickers[:most_common]:
@@ -491,27 +491,25 @@ def analyze(chat, period=TimePeriod.ALL, restrict_range=None):
     messages = chat["messages"]
 
     td = TimeDivider(period=period)
-    #dtcount = TimeRangeCount()
     for msg in messages:
-        #dtcount.message(msg)
         # if restrict_range is None or msg in range:
         td.message(msg)
    
     return td
 
-def printanalysis(td):
+def print_analysis(td):
     for timekey, trcount in td.trcounts.items():
         print("\n=========== chat stats for " + trcount.rangestr())
         for name, pstats in trcount.percount.items():
             print("---\nfor {}:".format(name))
             print("messages: {} / {} = {} %".format(pstats["msg"], trcount.allcount["msg"], round(pstats["msg"] / trcount.allcount["msg"] * 100, 3)))
-            printcount(pstats)
-            printreacts(pstats, trcount.allcount["msg"])
+            print_count(pstats)
+            print_reacts(pstats, trcount.allcount["msg"])
 
         print("---\ntime period totals:")
         print("messages sent: " + str(trcount.allcount["msg"]))
-        printcount(trcount.allcount)
-        printreacts(trcount.allcount)
+        print_count(trcount.allcount)
+        print_reacts(trcount.allcount)
         print("============ end stats for " + trcount.rangestr())
     return
 
@@ -525,7 +523,7 @@ def main():
     print("... loaded. analyzing. ({} period)".format(period.describe()))
     td = analyze(bjork, period)
     
-    #printanalysis(td)
+    #print_analysis(td)
 
     print("saving to {}".format(savefile))
     savejson(td.serializable(), savefile)

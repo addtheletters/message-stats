@@ -38,9 +38,13 @@ def test_plot(td):
     plt.savefig("test.png", format="png", dpi=256)
     return
 
-def sticker_cosine_similarity(td):
-    mincount = 2
-    ss = msgs.stickersimilarity(td.alltime(), mincount=mincount, excludeself=True)
+def sticker_spam(td):
+    plt.figure(figsize=(6, 4))
+    plt.savefig("stickerspam.png", format="png", dpi=256)
+    return
+
+def sticker_similarity(td, mincount=2):
+    ss = msgs.sticker_similarity(td.alltime(), mincount=mincount, excludeself=True)
     names = ss[0]
     mat = ss[1]
     ind = [i for i in range(len(names))]
@@ -248,7 +252,7 @@ def reacts_received_density(td):
 
 def activity(td): # by-time-period distribution
     times = td.getallkeys()
-    timelabels = [dt.strftime("%b%y") for dt in times]
+    timelabels = [dt.strftime(td.period.formats()) for dt in times]
 
     names = []
     personal_activity = {}
@@ -261,9 +265,11 @@ def activity(td): # by-time-period distribution
         for name in names:
             if name in td.trcounts[dt].percount:
                 personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
+            else:
+                personal_activity[name][i] = 0
 
     plt.figure(figsize=(9, 4))
-    plt.title("{} activity".format(td.period.describe()))
+    plt.title("{} activity".format(td.period.describe().capitalize()))
     plt.ylabel("messages sent")
     ax = plt.gca()
     ax.tick_params(labelsize=4)
@@ -273,11 +279,8 @@ def activity(td): # by-time-period distribution
     plt.savefig("{}activity.png".format(td.period.describe()), format="png", dpi=200)
     return
 
-def all_time_stickers(td):
-    num = 15
-
+def all_time_stickers(td, num=15):
     allt = td.alltime()
-    #msgs.printstickers(allt.allcount, num)
     sticks = allt.allcount["sticker_use"].most_common()[:num]
 
     rank = [i+1 for i in range(len(sticks))]
@@ -290,21 +293,22 @@ def all_time_stickers(td):
         for i in range(len(stickfiles)):
             personal_use[name][i] = pcount["sticker_use"][stickfiles[i]]
 
-    add_bar_stack(rank, names, personal_use)
-
+    plt.figure(figsize=(9, 4))
     plt.ylabel("Uses")
     plt.title("Most common stickers ({})".format(allt.rangestr()))
     plt.xticks(rank)
 
+    add_bar_stack(rank, names, personal_use)
+
     # show stickers as x-axis labels
     ax = plt.gca()
-    for i in range(len(sticks)):
-        add_png_xlabel(sticks[i][0], ax, i+1, 0.05)
+    for i in range(len(stickfiles)):
+        add_png_xlabel(stickfiles[i], ax, i+1, scale=0.05)
 
     plt.savefig("alltimestickers.png", format="png", dpi=256)
     return
 
-def add_png_xlabel(filename, ax, xcoord, scale=0.02):
+def add_png_xlabel(filename, ax, xcoord, scale=0.02, ycoord=0):
     img = plt.imread(filename, format='png')
     # scale large stickers to roughly match the standard
     dim = (img.size + img[0].size) / 2
@@ -312,7 +316,7 @@ def add_png_xlabel(filename, ax, xcoord, scale=0.02):
         scale = scale * (STANDARD_STICKER_SIZE / dim)
     imagebox = OffsetImage(img, zoom=scale)
     imagebox.image.axes = ax
-    ab = AnnotationBbox(imagebox, (xcoord, 0), xybox=(0, -16),
+    ab = AnnotationBbox(imagebox, (xcoord, ycoord), xybox=(0, -16),
                     xycoords=("data", "axes fraction"),
                     boxcoords="offset points",
                     box_alignment=(.5, 1),
@@ -343,7 +347,7 @@ def add_bar_stack(xitems, names, personal, width=0.5):
     for i in range(len(names)):
         name = names[i]
         bars.append(plt.bar(xitems, personal[name], width=width, bottom=top))
-        top = [top[i] + personal[name][i] for i in range(len(xitems))]
+        top = [top[j] + personal[name][j] for j in range(len(xitems))]
     plt.legend(bars, names, fontsize="small")
 
 def main():
@@ -355,14 +359,18 @@ def main():
     print("analysis loaded, plotting...")
 
     test_plot(td)
-    sticker_cosine_similarity(td)
-    personal_reacts_given_density(td)
-    reacts_received_density(td)
-    sticker_use(td)
-    link_use(td)
-    emoji_use(td)
-    activity(td)
+    sticker_spam(td)
+    #sticker_similarity(td)
+    #personal_reacts_given_density(td)
+    #reacts_received_density(td)
+    #sticker_use(td)
+    #link_use(td)
+    #emoji_use(td)
+    #activity(td)
     all_time_stickers(td)
+
+    print("done plotting.")
+
     return
 
 if __name__ == '__main__':
