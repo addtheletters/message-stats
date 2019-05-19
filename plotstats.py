@@ -1,5 +1,4 @@
-#!/usr/bin/python3
-# -*- coding: utf-8 -*-
+#!./venv/bin/python3
 
 # graph results of facebook messenger chat history analysis
 
@@ -411,10 +410,10 @@ def main():
     #sticker_similarity(td)
     #personal_reacts_given_density(td)
     #reacts_received_density(td)
-    #sticker_use(td)
+    sticker_use(td)
     #link_use(td)
     #emoji_use(td)
-    words_use(td)
+    #words_use(td)
     #activity(td)
     #all_time_stickers(td)
 

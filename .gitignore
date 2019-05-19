@@ -15,5 +15,6 @@
 # renders
 *.html
 
-# cache
+# python, env
 /__pycache__
+/venv

@@ -1,8 +1,9 @@
-#!/usr/bin/python3
+#!./venv/bin/python3
 
 # perform some analysis on a downloaded Facebook Messenger chat history json
 import sys, json, unicodedata, urllib.parse
-import numpy as np
+import numpy as np # https://www.numpy.org/
+from textblob import TextBlob # https://textblob.readthedocs.io/
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
@@ -160,6 +161,8 @@ def create_count():
             "reacts_given" : 0,
             "reacts_received_messages" : 0, # counts up only once for each message that gets at least one react
             "reacts_received_total" : 0,    # counts up for each react (can be multiple per message)
+
+            "sentiment_total" : [0,0],
         }
 
     ctr["reacts_received_use"] = Counter()
@@ -171,6 +174,9 @@ def create_count():
 
     ctr["emoji_use"] = Counter()
     ctr["words_use"] = Counter()
+
+    ctr["sentiments"] = []
+
     return ctr
 
 class TimeRangeCount:
@@ -321,7 +327,7 @@ def count_message(msg, ctr, p_ctr):
 
     sender = ""
     if "sender_name" in msg:
-        sender = msg["sender_name"]    
+        sender = msg["sender_name"]
     if sender not in p_ctr:
         p_ctr[sender] = create_count()
 
@@ -400,6 +406,10 @@ def count_message(msg, ctr, p_ctr):
             p_ctr[sender]["words"] += 1
             p_ctr[sender]["words_use"][word] += 1
 
+        # ---------
+        # text processing, sentiment analysis
+        track_sentiment(msg, ctr, p_ctr) 
+
     return
 
 def count_reacts(msg, all_ctr, p_ctr):
@@ -435,6 +445,20 @@ def count_reacts(msg, all_ctr, p_ctr):
             all_ctr["reacts_received_use"][content] += 1
     return
 
+def track_sentiment(msg, all_ctr, p_ctr):
+    if "content" not in msg:
+        return
+
+    blob = TextBlob(msg["content"])
+    sentiment = blob.sentiment#(blob.sentiment.polarity, blob.sentiment.subjectivity)
+    all_ctr["sentiments"].append(sentiment)
+    all_ctr["sentiment_total"][0] += sentiment.polarity
+    all_ctr["sentiment_total"][1] += sentiment.subjectivity
+    p_ctr[msg["sender_name"]]["sentiments"].append(sentiment)
+    p_ctr[msg["sender_name"]]["sentiment_total"][0] += sentiment.polarity
+    p_ctr[msg["sender_name"]]["sentiment_total"][1] += sentiment.subjectivity
+
+    return
 
 def ratiostr(a, b):
     return str(a) + " / " + str(b) + " (" + str(round(a/b * 100, 3)) + " %)"
@@ -489,10 +513,17 @@ def analyze(chat, period=TimePeriod.ALL, restrict_range=None):
  
     messages = chat["messages"]
 
+    total = len(messages)
+    progress = 0
+    checkpoints = [i * (total // 10) for i in range(1,10)]
+
     td = TimeDivider(period=period)
     for msg in messages:
+        if progress in checkpoints:
+            print("\t... {}/{}".format(progress+1, total))
         # if restrict_range is None or msg in range:
         td.message(msg)
+        progress += 1
    
     return td
 
