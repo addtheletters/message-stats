@@ -14,3 +14,6 @@
 
 # renders
 *.html
+
+# cache
+/__pycache__

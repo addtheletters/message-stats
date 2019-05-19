@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 # perform some analysis on a downloaded Facebook Messenger chat history json
-import json, unicodedata, urllib.parse
+import sys, json, unicodedata, urllib.parse
 import numpy as np
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -19,6 +19,9 @@ COUNTER_KEYS = [ "reacts_received_use",
                  "emoji_use",
                  "words_use" ]
 
+TEST_FILE = "bjork_message.json"
+TEST_SAVE = "bjork_analysis.json"
+
 # things to try still:
 # word use / misspellings
 # sentiment analysis
@@ -29,6 +32,19 @@ class TimePeriod(Enum):
     MONTH = 2
     WEEK = 3
     DAY = 4
+
+    def describe(self):
+        if self == ALL:
+            return "All-time"
+        if self == YEAR:
+            return "Yearly"
+        if self == MONTH:
+            return "Monthly"
+        if self == WEEK:
+            return "Weekly"
+        if self == DAY:
+            return "Daily"
+        return self.name + "-ly"
 
 def stickersimilarity(trc, mincount=3, excludeself=False):
     stickers = []
@@ -468,10 +484,20 @@ def printanalysis(td):
     return
 
 def main():
-    bjork = loadjson("bjork_message.json")
+    loadfile = sys.argv[1] if len(sys.argv) > 1 else TEST_FILE
+    savefile = sys.argv[2] if len(sys.argv) > 2 else TEST_SAVE
+
+    print("loading messages from {}".format(loadfile))
+    bjork = loadjson(loadfile)
+    print("... loaded. analyzing.")
     td = analyze(bjork, TimePeriod.MONTH)
-    savejson(td.serializable(), "bjork_analysis.json")
-    printanalysis(td)
+    
+    #printanalysis(td)
+    
+    print("saving to {}".format(savefile))
+    savejson(td.serializable(), savefile)
+    print("saved to {}".format(savefile))
+
     return
 
 if __name__ == '__main__':

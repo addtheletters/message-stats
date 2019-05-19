@@ -4,7 +4,7 @@
 # graph results of facebook messenger chat history analysis
 
 import messages as msgs
-import unicodedata
+import sys, unicodedata
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
@@ -18,7 +18,6 @@ OUTLIER_MARK = 300
 DIAG_LABEL_FONT_SIZE = 3.5
 
 #print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
-#matplotlib.rc('font', family='Arial')
 
 DOMAIN_COLORS = {
     "www.reddit.com":"orange",
@@ -31,7 +30,8 @@ DOMAIN_COLORS = {
     "clips.twitch.tv":"purple",
 }
 
-ufont = fm.FontProperties(fname="/mnt/c/Windows/Fonts/seguiemj.ttf", size=DIAG_LABEL_FONT_SIZE)
+EMOJI_FONT_FILE = "/mnt/c/Windows/Fonts/seguiemj.ttf"
+emoji_font = fm.FontProperties(fname=EMOJI_FONT_FILE, size=DIAG_LABEL_FONT_SIZE)
 
 def testplot(td):
     plt.figure(figsize=(6, 4))
@@ -155,7 +155,7 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
                             text = "(outlier {} > {}) ".format(outlier[2], OUTLIER_MARK) + text
                             break
                     if showemoji:
-                        addtextxlabel(text, ax, bases[i], rotate=45, fontprops=ufont)
+                        addtextxlabel(text, ax, bases[i], rotate=45, fontprops=emoji_font)
                     else:
                         addtextxlabel(text, ax, bases[i], rotate=45)
             i += 1
@@ -351,9 +351,10 @@ def addpersonbarstack(xitems, names, personal, width=0.5):
     plt.legend(bars, names, fontsize="small")
 
 def main():
-    #bjork = msgs.loadjson("bjork_message.json")
-    #td = msgs.analyze(bjork, msgs.TimePeriod.MONTH)
-    td = msgs.loadjson("bjork_analysis.json")
+    analysisfile = sys.argv[1] if len(sys.argv) > 1 else msgs.TEST_SAVE
+
+    print("loading analysis from {}".format(analysisfile))
+    td = msgs.loadjson(analysisfile)
 
     print("analysis loaded, plotting...")
 
