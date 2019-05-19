@@ -21,10 +21,7 @@ COUNTER_KEYS = [ "reacts_received_use",
 
 TEST_FILE = "bjork_message.json"
 TEST_SAVE = "bjork_analysis.json"
-
-# things to try still:
-# word use / misspellings
-# sentiment analysis
+TEST_PLACEHOLDER = "__test__"
 
 class TimePeriod(Enum):
     ALL = 0
@@ -34,17 +31,50 @@ class TimePeriod(Enum):
     DAY = 4
 
     def describe(self):
-        if self == ALL:
-            return "All-time"
-        if self == YEAR:
-            return "Yearly"
-        if self == MONTH:
-            return "Monthly"
-        if self == WEEK:
-            return "Weekly"
-        if self == DAY:
-            return "Daily"
+        if self == TimePeriod.ALL:
+            return "all-time"
+        if self == TimePeriod.YEAR:
+            return "yearly"
+        if self == TimePeriod.MONTH:
+            return "monthly"
+        if self == TimePeriod.WEEK:
+            return "weekly"
+        if self == TimePeriod.DAY:
+            return "daily"
         return self.name + "-ly"
+
+    def formats(self):
+        if self == TimePeriod.ALL:
+            return "all-time"
+        if self == TimePeriod.YEAR:
+            return "y%Y"
+        if self == TimePeriod.MONTH:
+            return "%b%y"
+        if self == TimePeriod.WEEK:
+            return "w%Wy%y"
+        if self == TimePeriod.DAY:
+            return "%d%b%y"
+        return self.name + "?"
+
+    @staticmethod
+    def parse(s):
+        if s in ("a", "all"):
+            return TimePeriod.ALL
+        if s in ("y", "year"):
+            return TimePeriod.YEAR
+        if s in ("m", "month"):
+            return TimePeriod.MONTH
+        if s in ("w", "week"):
+            return TimePeriod.WEEK
+        if s in ("d", "day"):
+            return TimePeriod.DAY
+        raise ValueError("{} could not be interpreted as a time period.".format(s))
+
+TEST_PERIOD = TimePeriod.MONTH
+
+# things to try still:
+# word use / misspellings
+# sentiment analysis
 
 def stickersimilarity(trc, mincount=3, excludeself=False):
     stickers = []
@@ -259,7 +289,9 @@ class TimeDivider:
         elif self.period is TimePeriod.MONTH:
             return datetime(year=dt.year, month=dt.month, day=1)
         elif self.period is TimePeriod.WEEK:
-            return dt - timedelta(days=dt.weekday()) # key using first day of week
+            delta = timedelta(days=dt.weekday())
+            pdt = dt - delta
+            return datetime(year=pdt.year, month=pdt.month, day=pdt.day) # key using first day of week
         elif self.period is TimePeriod.DAY:
             return datetime(year=dt.year, month=dt.month, day=dt.day)
         return None
@@ -484,16 +516,17 @@ def printanalysis(td):
     return
 
 def main():
-    loadfile = sys.argv[1] if len(sys.argv) > 1 else TEST_FILE
-    savefile = sys.argv[2] if len(sys.argv) > 2 else TEST_SAVE
+    loadfile = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != TEST_PLACEHOLDER else TEST_FILE
+    savefile = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != TEST_PLACEHOLDER else TEST_SAVE
+    period = TimePeriod.parse(sys.argv[3]) if len(sys.argv) > 3 else TEST_PERIOD
 
     print("loading messages from {}".format(loadfile))
     bjork = loadjson(loadfile)
-    print("... loaded. analyzing.")
-    td = analyze(bjork, TimePeriod.MONTH)
+    print("... loaded. analyzing. ({} period)".format(period.describe()))
+    td = analyze(bjork, period)
     
     #printanalysis(td)
-    
+
     print("saving to {}".format(savefile))
     savejson(td.serializable(), savefile)
     print("saved to {}".format(savefile))

@@ -14,8 +14,8 @@ from datetime import datetime
 from random import randrange, random
 
 STANDARD_STICKER_SIZE = 230400
-OUTLIER_MARK = 300
-DIAG_LABEL_FONT_SIZE = 3.5
+OUTLIER_MARK = 200
+DIAG_LABEL_FONT_SIZE = 3
 
 #print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
 
@@ -33,12 +33,12 @@ DOMAIN_COLORS = {
 EMOJI_FONT_FILE = "/mnt/c/Windows/Fonts/seguiemj.ttf"
 emoji_font = fm.FontProperties(fname=EMOJI_FONT_FILE, size=DIAG_LABEL_FONT_SIZE)
 
-def testplot(td):
+def test_plot(td):
     plt.figure(figsize=(6, 4))
     plt.savefig("test.png", format="png", dpi=256)
     return
 
-def stickercosinesimilarity(td):
+def sticker_cosine_similarity(td):
     mincount = 2
     ss = msgs.stickersimilarity(td.alltime(), mincount=mincount, excludeself=True)
     names = ss[0]
@@ -73,10 +73,12 @@ def randcolor(previous=[]):
         return (random(), random(), random(), 1)
     return choices[randrange(len(choices))]
 
-def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), showemoji=False):
-    # monthly most used? exclude no-use months
+def by_period_use(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), showemoji=False):
+    periodstr = td.period.describe()
+
+    # most used in each time period; exclude no-use time ranges
     times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount[countkey] != 0]
-    timelabels = [dt.strftime("%b%y") for dt in times]
+    timelabels = [dt.strftime(td.period.formats()) for dt in times]
 
     rankings = []
     for i in range(num):
@@ -98,10 +100,10 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
                 rankings[i][1].append(0)
     
     plt.figure(figsize=size)
-    plt.title("Monthly most-used {}".format(countkey) + ("s" if countkey[-1] != 'i' else ""))
+    plt.title("{} most-used {}".format(periodstr.capitalize(), countkey) + ("s" if countkey[-1] != 'i' else ""))
     plt.ylabel("uses")
     ax = plt.gca()
-    ax.tick_params(labelsize=4)
+    ax.tick_params(labelsize=3)
 
     barsets = []
     ind = [2*x for x in range(len(timelabels))]
@@ -137,7 +139,7 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
             pair = rankings[rank][0][dti]
             if pair != None:
                 if imglabel:
-                    addpngxlabel(pair, ax, bases[i], 0.05)
+                    add_png_xlabel(pair, ax, bases[i], 0.05)
                 else:
                     text = pair
                     if showemoji:
@@ -155,35 +157,35 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
                             text = "(outlier {} > {}) ".format(outlier[2], OUTLIER_MARK) + text
                             break
                     if showemoji:
-                        addtextxlabel(text, ax, bases[i], rotate=45, fontprops=emoji_font)
+                        add_text_xlabel(text, ax, bases[i], rotate=45, fontprops=emoji_font)
                     else:
-                        addtextxlabel(text, ax, bases[i], rotate=45)
+                        add_text_xlabel(text, ax, bases[i], rotate=45)
             i += 1
 
     ax.set_xticklabels(timelabels)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.26)
 
-    plt.savefig("monthly{}use.png".format(countkey), format="png", dpi=256)
+    plt.savefig("{}{}use.png".format(periodstr, countkey), format="png", dpi=256)
     return
 
-def monthlystickeruse(td):
-    monthlyuse(td, "sticker", "sticker_use", size=(50,5))
+def sticker_use(td):
+    by_period_use(td, "sticker", "sticker_use", size=(50,5))
     return
 
-def monthlylinkuse(td):
-    monthlyuse(td, "share", "share_use", num=5, imglabel=False, size=(20,5))
+def link_use(td):
+    by_period_use(td, "share", "share_use", num=3, imglabel=False, size=(40,5))
     return
 
-def monthlyemojiuse(td):
+def emoji_use(td):
     matplotlib.rc('font', family='DejaVu Sans')
-    monthlyuse(td, "emoji", "emoji_use", num=4, imglabel=False, size=(20, 5), showemoji=True)
+    by_period_use(td, "emoji", "emoji_use", num=3, imglabel=False, size=(40,5), showemoji=True)
     return
 
-def monthlyreactgivendensity(td):
-    # exclude months before reacts existed
+def personal_reacts_given_density(td):
+    # exclude periods before reacts existed
     times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received_total"] != 0]
-    timelabels = [dt.strftime("%b%y") for dt in times]
+    timelabels = [dt.strftime(td.period.formats()) for dt in times]
 
     activity = []
     for dt in times:
@@ -215,15 +217,15 @@ def monthlyreactgivendensity(td):
     ax = plt.gca()
     ax.tick_params(labelsize=4)
 
-    addpersonbarstack(timelabels, names, personal_density)
+    add_bar_stack(timelabels, names, personal_density)
 
-    plt.savefig("monthlyreactgivendensity.png", format="png", dpi=200)
+    plt.savefig("{}reactgivendensity.png".format(td.period.describe()), format="png", dpi=200)
     return
 
-def monthlyreactdensity(td):
-    # exclude months before reacts existed
+def reacts_received_density(td):
+    # exclude periods before reacts existed
     times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["reacts_received_total"] != 0]
-    timelabels = [dt.strftime("%b%y") for dt in times]
+    timelabels = [dt.strftime(td.period.formats()) for dt in times]
 
     activity = []
     reacts = []
@@ -234,25 +236,19 @@ def monthlyreactdensity(td):
     density = [reacts[i] / activity[i] for i in range(len(activity))]
 
     plt.figure(figsize=(9, 4))
-    plt.title("Monthly react density")
+    plt.title("{} react density".format(td.period.describe().capitalize()))
     plt.ylabel("reacts / messages")
     ax = plt.gca()
     ax.tick_params(labelsize=4)
 
     plt.bar(timelabels, density)
 
-    plt.savefig("monthlyreactdensity.png", format="png", dpi=200)
+    plt.savefig("{}reactdensity.png".format(td.period.describe()), format="png", dpi=200)
     return
 
-def monthlyactivity(td):
-    # by-time-period distribution
-    # assume months?
-
+def activity(td): # by-time-period distribution
     times = td.getallkeys()
     timelabels = [dt.strftime("%b%y") for dt in times]
-    # activity = []
-    # for dt in times:
-    #     activity.append(td.trcounts[dt].allcount["msg"])
 
     names = []
     personal_activity = {}
@@ -263,21 +259,21 @@ def monthlyactivity(td):
     for i in range(len(times)):
         dt = times[i]
         for name in names:
-            personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
+            if name in td.trcounts[dt].percount:
+                personal_activity[name][i] = td.trcounts[dt].percount[name]["msg"]
 
     plt.figure(figsize=(9, 4))
-    plt.title("Monthly activity")
+    plt.title("{} activity".format(td.period.describe()))
     plt.ylabel("messages sent")
     ax = plt.gca()
     ax.tick_params(labelsize=4)
 
-    addpersonbarstack(timelabels, names, personal_activity)
-    #plt.bar(timelabels, activity)
+    add_bar_stack(timelabels, names, personal_activity)
 
-    plt.savefig("monthlyactivity.png", format="png", dpi=200)
+    plt.savefig("{}activity.png".format(td.period.describe()), format="png", dpi=200)
     return
 
-def alltimestickers(td):
+def all_time_stickers(td):
     num = 15
 
     allt = td.alltime()
@@ -294,7 +290,7 @@ def alltimestickers(td):
         for i in range(len(stickfiles)):
             personal_use[name][i] = pcount["sticker_use"][stickfiles[i]]
 
-    addpersonbarstack(rank, names, personal_use)
+    add_bar_stack(rank, names, personal_use)
 
     plt.ylabel("Uses")
     plt.title("Most common stickers ({})".format(allt.rangestr()))
@@ -303,12 +299,12 @@ def alltimestickers(td):
     # show stickers as x-axis labels
     ax = plt.gca()
     for i in range(len(sticks)):
-        addpngxlabel(sticks[i][0], ax, i+1, 0.05)
+        add_png_xlabel(sticks[i][0], ax, i+1, 0.05)
 
     plt.savefig("alltimestickers.png", format="png", dpi=256)
     return
 
-def addpngxlabel(filename, ax, xcoord, scale=0.02):
+def add_png_xlabel(filename, ax, xcoord, scale=0.02):
     img = plt.imread(filename, format='png')
     # scale large stickers to roughly match the standard
     dim = (img.size + img[0].size) / 2
@@ -324,7 +320,7 @@ def addpngxlabel(filename, ax, xcoord, scale=0.02):
     ax.add_artist(ab)
     return
 
-def addtextxlabel(txt, ax, xcoord, rotate=45, yoffset=-15, fontprops=fm.FontProperties(size=DIAG_LABEL_FONT_SIZE)):
+def add_text_xlabel(txt, ax, xcoord, rotate=45, yoffset=-15, fontprops=fm.FontProperties(size=DIAG_LABEL_FONT_SIZE)):
     textbox = TextArea(txt, textprops={
         #"fontsize":size,
         "FontProperties":fontprops,
@@ -341,7 +337,7 @@ def addtextxlabel(txt, ax, xcoord, rotate=45, yoffset=-15, fontprops=fm.FontProp
     ax.add_artist(ab)
     return
 
-def addpersonbarstack(xitems, names, personal, width=0.5):
+def add_bar_stack(xitems, names, personal, width=0.5):
     bars = []
     top = [0] * len(xitems)
     for i in range(len(names)):
@@ -358,14 +354,15 @@ def main():
 
     print("analysis loaded, plotting...")
 
-    #testplot(td)
-    #stickercosinesimilarity(td)
-    monthlyreactgivendensity(td)
-    #monthlystickeruse(td)
-    monthlylinkuse(td)
-    monthlyemojiuse(td)
-    #monthlyactivity(td)
-    #alltimestickers(td)
+    test_plot(td)
+    sticker_cosine_similarity(td)
+    personal_reacts_given_density(td)
+    reacts_received_density(td)
+    sticker_use(td)
+    link_use(td)
+    emoji_use(td)
+    activity(td)
+    all_time_stickers(td)
     return
 
 if __name__ == '__main__':
