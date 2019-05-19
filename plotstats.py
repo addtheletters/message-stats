@@ -38,8 +38,35 @@ def test_plot(td):
     plt.savefig("test.png", format="png", dpi=256)
     return
 
-def sticker_spam(td):
-    plt.figure(figsize=(6, 4))
+# places random stickers, chosen at probabilities respecting their all-time usage
+def sticker_spam(td, xsize=4, ysize=3, times=1500):
+    plt.figure(figsize=(xsize, ysize))
+    plt.title("uh stickers I guess")
+
+    xv = [i for i in range(xsize)]
+    yv = [i for i in range(ysize)]
+
+    stickers = td.alltime().allcount["sticker_use"].most_common()
+    stktotal = td.alltime().allcount["sticker"]
+    print(len(stickers))
+
+    def randsticker(stkrs):
+        choice = randrange(0, stktotal-1)
+        ind = 0
+        while choice >= 0 and ind < len(stkrs):
+            if choice < stkrs[ind][1]:
+                return stkrs[ind][0]
+            choice -= stkrs[ind][1]
+            ind += 1
+        return stkrs[ind-1][0]
+
+    i = 0
+    while i < times:
+        rx = random()
+        ry = random() + 0.15
+        add_png_xlabel(randsticker(stickers), plt.gca(), rx, scale=0.06, ycoord=ry)
+        i += 1
+
     plt.savefig("stickerspam.png", format="png", dpi=256)
     return
 
@@ -367,7 +394,7 @@ def main():
     #link_use(td)
     #emoji_use(td)
     #activity(td)
-    all_time_stickers(td)
+    #all_time_stickers(td)
 
     print("done plotting.")
 
