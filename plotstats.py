@@ -1,8 +1,10 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
 
 # graph results of facebook messenger chat history analysis
 
 import messages as msgs
+import unicodedata
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox, TextArea
@@ -11,11 +13,15 @@ from datetime import datetime
 from random import randrange, random
 
 STANDARD_STICKER_SIZE = 230400
+OUTLIER_MARK = 300
+DIAG_LABEL_FONT_SIZE = 3.5
+
+import matplotlib.font_manager as fm
+print(fm.findSystemFonts(fontpaths=None, fontext='ttf'))
+#matplotlib.rc('font', family='Arial')
+ufont = fm.FontProperties(fname="/mnt/c/Windows/Fonts/seguiemj.ttf", size=DIAG_LABEL_FONT_SIZE)
 
 def testplot(td):
-    # emoji density?
-
-
     plt.figure(figsize=(6, 4))
     plt.savefig("test.png", format="png", dpi=256)
     return
@@ -55,7 +61,7 @@ def randcolor(previous=[]):
         return (random(), random(), random(), 1)
     return choices[randrange(len(choices))]
 
-def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), labelrotate=45, labelsize=1):
+def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4), showemoji=False):
     # monthly most used? exclude no-use months
     times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount[countkey] != 0]
     timelabels = [dt.strftime("%b%y") for dt in times]
@@ -64,18 +70,23 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
     for i in range(num):
         rankings.append(([], [])) #(uris, counts)
 
+    outliers = []
+
     for dt in times:
         items = td.trcounts[dt].allcount[usekey].most_common()[:num]
         for i in range(num):
             if i < len(items):
                 rankings[i][0].append(items[i][0])
                 rankings[i][1].append(items[i][1])
+                if rankings[i][1][-1] > OUTLIER_MARK:
+                    outliers.append((items[i][0], times.index(dt)))
+                    rankings[i][1][-1] = OUTLIER_MARK
             else:
                 rankings[i][0].append(None)
                 rankings[i][1].append(0)
     
     plt.figure(figsize=size)
-    plt.title("Monthly most-used {}".format(countkey) + "s" if countkey[-1] != 'i' else "")
+    plt.title("Monthly most-used {}".format(countkey) + ("s" if countkey[-1] != 'i' else ""))
     plt.ylabel("uses")
     ax = plt.gca()
     ax.tick_params(labelsize=4)
@@ -124,17 +135,36 @@ def monthlyuse(td, countkey, usekey, num=5, width=0.37, imglabel=True, size=(9,4
     # show images as x-axis labels
     i = 0
     for rank in range(num):
-        for pair in rankings[rank][0]:
+        for dti in range(len(rankings[rank][0])):
+            pair = rankings[rank][0][dti]
             if pair != None:
                 if imglabel:
                     addpngxlabel(pair, ax, bases[i], 0.05)
                 else:
-                    addtextxlabel(pair, ax, bases[i], rotate=labelrotate, size=labelsize)
+                    text = pair
+                    if showemoji:
+                        if len(pair) == 1 or len(pair) == 2:
+                            try:
+                                text = unicodedata.name(pair[0])
+                                if len(pair) == 2:
+                                    l2 = unicodedata.name(pair[1])
+                                    text = text + " + " + l2[-1]
+                            except ValueError as e:
+                                text = "unknown (" + repr(bytes(pair, encoding="utf-8")) + ")"
+                            text = text + " > " + pair
+                    for outlier in outliers:
+                        if pair == outlier[0] and dti == outlier[1]:
+                            text = "(> {} outlier) ".format(OUTLIER_MARK) + text
+                            break
+                    if showemoji:
+                        addtextxlabel(text, ax, bases[i], rotate=45, fontprops=ufont)
+                    else:
+                        addtextxlabel(text, ax, bases[i], rotate=45)
             i += 1
 
     ax.set_xticklabels(timelabels)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.2)
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.9, bottom=0.26)
 
     plt.savefig("monthly{}use.png".format(countkey), format="png", dpi=256)
     return
@@ -149,7 +179,7 @@ def monthlylinkuse(td):
 
 def monthlyemojiuse(td):
     matplotlib.rc('font', family='DejaVu Sans')
-    monthlyuse(td, "emoji", "emoji_use", num=4, imglabel=False, size=(20, 5), labelrotate=0, labelsize=2)
+    monthlyuse(td, "emoji", "emoji_use", num=4, imglabel=False, size=(20, 5), showemoji=True)
     return
 
 def monthlyreactgivendensity(td):
@@ -296,15 +326,16 @@ def addpngxlabel(filename, ax, xcoord, scale=0.02):
     ax.add_artist(ab)
     return
 
-def addtextxlabel(txt, ax, xcoord, rotate=45, size=1):
+def addtextxlabel(txt, ax, xcoord, rotate=45, yoffset=-15, fontprops=fm.FontProperties(size=DIAG_LABEL_FONT_SIZE)):
     textbox = TextArea(txt, textprops={
-        "fontsize":3*size,
+        #"fontsize":size,
+        "FontProperties":fontprops,
         "rotation":rotate,
         "ha":"right",
         "rotation_mode":"anchor",
         "fontstretch":"ultra-condensed"
         })
-    ab = AnnotationBbox(textbox, (xcoord, 0), xybox=(0, -15),
+    ab = AnnotationBbox(textbox, (xcoord, 0), xybox=(0, yoffset),
                     xycoords=("data", "axes fraction"),
                     boxcoords="offset points",
                     box_alignment=(0, 0),
@@ -332,8 +363,8 @@ def main():
     #stickercosinesimilarity(td)
     #monthlyreactgivendensity(td)
     #monthlystickeruse(td)
-    #monthlylinkuse(td)
-    #monthlyemojiuse(td)
+    monthlylinkuse(td)
+    monthlyemojiuse(td)
     #monthlyactivity(td)
     #alltimestickers(td)
     return

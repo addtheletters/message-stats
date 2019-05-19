@@ -14,7 +14,6 @@ SPECIAL_TIMEDIVIDER = "__timedivider__"
 EVERYONE_STICKER_KEY = "everyone"
 
 # things to try still:
-# emoji use
 # word use / misspellings
 # sentiment analysis
 
@@ -84,6 +83,7 @@ def loadjson(filename):
             dct["photo_use"] = Counter(dct["photo_use"])
             dct["link_domains"] = Counter(dct["link_domains"])
             dct["emoji_use"] = Counter(dct["emoji_use"])
+            dct["word_use"] = Counter(dct["word_use"])
             return dct
 
         if SPECIAL_TIMERANGE in dct:
@@ -127,6 +127,7 @@ def createcount():
             "photos" : 0,
             "share" : 0,
             "emoji" : 0,
+            "words" : 0,
         }
 
     # "total" : counts up for each react (can be multiple per message)
@@ -137,8 +138,9 @@ def createcount():
     ctr["sticker_use"] = Counter()
     ctr["photo_use"] = Counter()
     ctr["link_domains"] = Counter()
-    ctr["emoji_use"] = Counter()
 
+    ctr["emoji_use"] = Counter()
+    ctr["word_use"] = Counter()
     return ctr
 
 class TimeRangeCount:
@@ -177,16 +179,8 @@ class TimeRangeCount:
                 print("message not in time range ({} to {})".format(self.timerange[0], self.timerange[1]))
                 return
 
-        # count for the sender
-        if "sender_name" in msg:
-            name = msg["sender_name"]
-
-            if name not in self.percount:
-                self.percount[name] = createcount()
-            countmessage(msg, self.percount[name])
-
-        # count for total
-        countmessage(msg, self.allcount)
+        # count things
+        countmessage(msg, self.allcount, self.percount)
 
         # tally reactions
         countreacts(msg, self.allcount, self.percount)
@@ -265,17 +259,25 @@ class TimeDivider:
     def createtrcount(self, key):
         return TimeRangeCount(self.getrange(key))
 
-def countmessage(msg, ctr):
+def countmessage(msg, ctr, p_ctr):
     if ctr is None:
         print("no count object")
         return
 
+    sender = ""
+    if "sender_name" in msg:
+        sender = msg["sender_name"]    
+    if sender not in p_ctr:
+        p_ctr[sender] = createcount()
+
     ctr["msg"] += 1
+    p_ctr[sender]["msg"] += 1
 
     # what kind of message is it?
     for key in ("sticker", "photos", "share"):
         if key in msg:
             ctr[key] += 1
+            p_ctr[sender][key] += 1
 
     # track sticker usage
     if "sticker" in msg:
@@ -283,6 +285,7 @@ def countmessage(msg, ctr):
         if "uri" in msg["sticker"]:
             sticker = msg["sticker"]["uri"]
         ctr["sticker_use"][sticker] += 1
+        p_ctr[sender]["sticker_use"][sticker] += 1
 
     # track repeated image use
     if "photos" in msg:
@@ -291,17 +294,20 @@ def countmessage(msg, ctr):
             if "uri" in phobj:
                 photo = phobj["uri"]
             ctr["photo_use"][photo] += 1
+            p_ctr[sender]["photo_use"][photo] += 1
 
     # track shared link domains
     if "share" in msg:
         if "link" in msg["share"]:
             domain = urllib.parse.urlparse(msg["share"]["link"]).netloc
             ctr["link_domains"][domain] += 1
+            p_ctr[sender]["link_domains"][domain] += 1
         #if "share_text" in msg["share"]:
         #if len(msg["share"].keys()) != 1 or "link" not in msg["share"]:
             #print(msg)
 
     if "content" in msg:
+        # --------
         # track emoji use
         i = 0
         while i < len(msg["content"]):
@@ -323,10 +329,21 @@ def countmessage(msg, ctr):
                     emoji = weirdbytes_to_utf(msg["content"][i:i+chsize])
                     ctr["emoji"] += 1
                     ctr["emoji_use"][emoji] += 1
+
+                    p_ctr[sender]["emoji"] += 1
+                    p_ctr[sender]["emoji_use"][emoji] += 1
                 else:    # message ended before emoji detected?
                     print("tried to find emoji past end of message")
 
             i += chsize
+
+        # ----------
+        # track word use
+        for word in msg["content"].split(" "):
+            ctr["words"] += 1
+            ctr["word_use"][word] += 1
+            p_ctr[sender]["words"] += 1
+            p_ctr[sender]["word_use"][word] += 1
 
     return
 
