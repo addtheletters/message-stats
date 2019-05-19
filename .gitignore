@@ -11,3 +11,6 @@
 # plots
 *.png
 *.PNG
+
+# renders
+*.html
