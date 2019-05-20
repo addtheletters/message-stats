@@ -48,7 +48,7 @@ class TimePeriod(Enum):
         if self == TimePeriod.ALL:
             return "all-time"
         if self == TimePeriod.YEAR:
-            return "y%Y"
+            return "%Y"
         if self == TimePeriod.MONTH:
             return "%b%y"
         if self == TimePeriod.WEEK:
@@ -163,6 +163,7 @@ def create_count():
             "reacts_received_total" : 0,    # counts up for each react (can be multiple per message)
 
             "sentiment_total" : [0,0],
+            "content" : 0,
         }
 
     ctr["reacts_received_use"] = Counter()
@@ -368,6 +369,9 @@ def count_message(msg, ctr, p_ctr):
             #print(msg)
 
     if "content" in msg:
+        ctr["content"] += 1
+        p_ctr[sender]["content"] += 1
+
         # --------
         # track emoji use
         i = 0
@@ -450,7 +454,7 @@ def track_sentiment(msg, all_ctr, p_ctr):
         return
 
     blob = TextBlob(msg["content"])
-    sentiment = blob.sentiment#(blob.sentiment.polarity, blob.sentiment.subjectivity)
+    sentiment = blob.sentiment #(blob.sentiment.polarity, blob.sentiment.subjectivity)
     all_ctr["sentiments"].append(sentiment)
     all_ctr["sentiment_total"][0] += sentiment.polarity
     all_ctr["sentiment_total"][1] += sentiment.subjectivity

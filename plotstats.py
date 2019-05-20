@@ -34,10 +34,108 @@ DOMAIN_COLORS = {
 EMOJI_FONT_FILE = "/mnt/c/Windows/Fonts/seguiemj.ttf"
 emoji_font = fm.FontProperties(fname=EMOJI_FONT_FILE, size=DIAG_LABEL_FONT_SIZE)
 
-
 def test_plot(td):
     plt.figure(figsize=(6, 4))
+    plt.title("hello!")
     plt.savefig("test.png", format="png", dpi=256)
+    return
+
+def get_sentiment_avg(ctr):
+    if ctr["content"] == 0:
+        return (0, 0.5)
+    polarity = ctr["sentiment_total"][0] / ctr["content"]
+    subjectivity = ctr["sentiment_total"][1] / ctr["content"]
+    return (polarity, subjectivity)
+
+def personal_by_time_sentiment(td):
+    minmessages = 60
+    width = 0.15
+    # sub0: polarity
+    # sub1: subjectivity 
+    fgs, axs = plt.subplots(2, figsize=(10, 4))
+    plt.tight_layout()
+
+    names = [n for n in td.alltime().percount.keys() if td.alltime().percount[n]["msg"] > minmessages]
+
+    periodstr = td.period.describe()
+    times = [dt for dt in td.getallkeys() if td.trcounts[dt].allcount["msg"] > minmessages]
+    timelabels = [dt.strftime(td.period.formats()) for dt in times]
+    timepos = [i for i in range(len(timelabels))]
+
+    personal_polarity = {}
+    personal_subjectivity = {}
+    for name in names:
+        personal_polarity[name] = []
+        personal_subjectivity[name] = []
+        for dt in times:
+            if name in td.trcounts[dt].percount:
+                avgs = get_sentiment_avg(td.trcounts[dt].percount[name])
+                personal_polarity[name].append(avgs[0])
+                personal_subjectivity[name].append(avgs[1])
+            else:
+                personal_polarity[name].append(0)
+                personal_subjectivity[name].append(0.5)
+
+    plt.title("{} sentiment".format(periodstr.capitalize()))
+
+    axs[0].tick_params(labelsize=4)
+    axs[0].set_xticks([t + (width * len(names)/2) for t in timepos])
+    axs[0].set_xticklabels(timelabels)
+    axs[0].set_ylabel("polarity [-1,1]")
+    barpos = timepos[:]
+    for name in names:
+        axs[0].bar(barpos, personal_polarity[name], width)
+        # shift next bars over
+        for i in range(len(barpos)):
+            barpos[i] = barpos[i] + width
+    axs[0].legend(names, fontsize=5)
+
+    axs[1].tick_params(labelsize=4)
+    axs[1].set_xticks([t + (width * (len(names)-1)/2) for t in timepos])
+    axs[1].set_xticklabels(timelabels)
+    axs[1].set_ylabel("subjectivity [0,1]")
+    barpos = timepos[:]
+    for name in names:
+        axs[1].bar(barpos, personal_subjectivity[name], width)
+        # shift next bars over
+        for i in range(len(barpos)):
+            barpos[i] = barpos[i] + width
+    axs[1].legend(names, fontsize=5)
+
+    plt.savefig("{}sentiment.png".format(periodstr), format="png", dpi=256)
+    return
+
+def personal_all_time_sentiment(td):
+    plt.figure(figsize=(6, 4))
+    plt.title("Participant All-time Average Sentiment")
+    width = 0.3
+    pcolor = "blue"
+    scolor = "orange"
+    
+    names = [n for n in td.alltime().percount.keys()]
+    ind = [i for i in range(len(names))]
+    polarity = []
+    subjectivity = []
+
+    for name in names:
+        avgs = get_sentiment_avg(td.alltime().percount[name])
+        polarity.append(avgs[0])
+        subjectivity.append(avgs[1])
+
+    ax = plt.gca()
+    ax2 = ax.twinx()
+
+    pbar = ax.bar([ind[i] - width/2 for i in range(len(ind))], polarity, width, label="polarity", color=pcolor)
+    sbar = ax2.bar([ind[i] + width/2 for i in range(len(ind))], subjectivity, width, label="subjectivity", color=scolor)
+
+    ax.set_ylabel("polarity [-1,1]", color=pcolor)
+    ax2.set_ylabel("subjectivity [0,1]", color=scolor)
+    ax.tick_params(labelsize=4)
+    ax2.tick_params(labelsize=4)
+    ax.set_xticks(ind)
+    ax.set_xticklabels(names)
+
+    plt.savefig("alltimesentiment.png", format="png", dpi=256)
     return
 
 # places random stickers, chosen at probabilities respecting their all-time usage
@@ -406,11 +504,13 @@ def main():
     print("analysis loaded, plotting...")
 
     test_plot(td)
+    personal_all_time_sentiment(td)
+    personal_by_time_sentiment(td)
     #sticker_spam(td)
     #sticker_similarity(td)
     #personal_reacts_given_density(td)
     #reacts_received_density(td)
-    sticker_use(td)
+    #sticker_use(td)
     #link_use(td)
     #emoji_use(td)
     #words_use(td)
